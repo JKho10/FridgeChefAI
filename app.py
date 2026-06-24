@@ -2,6 +2,25 @@ import streamlit as st
 from agents.coordinator_agent import CoordinatorAgent
 import time
 
+country_flags = {
+    "British": "🇬🇧",
+    "American": "🇺🇸",
+    "Canadian": "🇨🇦",
+    "Mexican": "🇲🇽",
+    "Italian": "🇮🇹",
+    "French": "🇫🇷",
+    "Greek": "🇬🇷",
+    "Spanish": "🇪🇸",
+    "Japanese": "🇯🇵",
+    "Chinese": "🇨🇳",
+    "India": "🇮🇳",
+    "Thai": "🇹🇭",
+    "Vietnamese": "🇻🇳",
+    "Malaysian": "🇲🇾",
+    "Turkish": "🇹🇷",
+    "Jamaican": "🇯🇲"
+}
+
 st.set_page_config(
     page_title="FridgeChef AI",
     layout="wide"
@@ -134,6 +153,11 @@ if st.button("✨ Generate Meal Plan"):
 
                 st.subheader(r.get("name", "Unknown Recipe"))
 
+                country = r.get("country", "Unknown")
+                flag = country_flags.get(country, "🌍")
+
+                st.markdown(f"{flag} **{country}**")
+
                 coverage = r.get("coverage", 0)
 
                 st.metric("Ingredient Match", f"{coverage}%")
@@ -155,21 +179,28 @@ if st.button("✨ Generate Meal Plan"):
                 st.write(r.get("why", "").split("\n")[0])
 
                 # Matched / Missing
-                colA, colB = st.columns(2)
+                #colA, colB = st.columns(2)
+                additional = r.get("additional", [])
+
+                colA, colB, colC = st.columns(3)
 
                 with colA:
                     st.markdown("✔ Matched")
                     st.write(", ".join(matched) if matched else "None")
 
                 with colB:
-                    st.markdown("✖ Missing")
+                    st.markdown("✖ Missing (user input not in recipe)")
                     st.write(", ".join(missing) if missing else "None")
+
+                with colC:
+                    st.markdown("➕ Additional Needed (recipe requires)")
+                    st.write(", ".join(additional) if additional else "None")
 
             # Full Recipe Details
             with st.expander("👨‍🍳 View Full Recipe"):
                 st.markdown("### Ingredients")
                 for item in r.get("ingredients", []):
-                    st.write("•", item)
+                    st.markdown(f"- {item}")
 
                 st.markdown("### Instructions")
                 st.write(r.get("instructions", ""))

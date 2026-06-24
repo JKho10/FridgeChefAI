@@ -1,3 +1,5 @@
+import re 
+
 class NutritionAgent:
 
     """
@@ -84,10 +86,17 @@ class NutritionAgent:
             for item in recipe.get("ingredients", []):
                 item = item.lower()
 
+                # Extract quantity (grams/mL)
+                match = re.search(r"(\d+)", item)
+                unit_match = re.search(r"(g|kg|ml|tbsp|tbs|tsp|cloves|clove)?", item)
+
+                quantity = int(match.group(1)) if match else 100  # Default to 100g if no quantity
+
                 for food, data in FOOD_DB.items():
                     if food in item:
-                        estimated_calories += data["cal"]
-                        estimated_protein += data["protein"]
+                        scale = quantity / 100  # Scale based on 100g reference
+                        estimated_calories += data["cal"] * scale
+                        estimated_protein += data["protein"] * scale
 
         return {
             "bmr": round(bmr),

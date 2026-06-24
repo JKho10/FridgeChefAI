@@ -1,34 +1,101 @@
 from mcp_server.server import MealMCPServer
+import re
 
 class RecipeAgent:
-
     """
-    Recipe retrieval and ranking agent.
+    Recipe retrieval, ranking, and explanation agent.
 
-    Responsibilities:
-    - Retrieves recipe data through MCP tool layer
-    - Fetches full recipe details for candidates
-    - Scores recipes based on ingredient overlap
-    - Returns ranked list of recommendations with explanations
+    This agent is responsible for:
+    - Fetching recipes via MCP tool layer
+    - Extracting structured ingredients from API responses
+    - Comparing user ingredients with recipe ingredients
+    - Computing match scores (coverage)
+    - Identifying:
+        ✔ matched ingredients (user has them)
+        ✖ missing ingredients (user input not in recipe)
+        ➕ additional ingredients (recipe requires but user does not have)
 
-    The agent does not directly access external APIs.
-    All external calls are routed through the MCP server.
+    Key design goal:
+    - Avoid substring matching errors (e.g. "chicken" ≠ "chicken stock")
+    - Use token-based matching for accuracy
     """
 
     def __init__(self):
+        """
+        Initializes RecipeAgent with MCP server connection.
+        """
         self.mcp = MealMCPServer()
 
-    def generate(self, ingredients, strategy):
+    def normalize(self, text: str) -> str:
+        """
+        Normalizes text for consistent comparison.
 
+        Steps:
+        - Converts to lowercase
+        - Strips whitespace
+
+        Args:
+            text (str): input string
+
+        Returns:
+            str: normalized string
+        """
+        return text.lower().strip()
+
+    def clean_tokens(self, text: str):
+        """
+        Converts a string into a set of word tokens.
+
+        Example:
+            "chicken stock" -> {"chicken", "stock"}
+
+        Args:
+            text (str)
+
+        Returns:
+            set[str]
+        """
+        return set(re.findall(r"[a-z]+", text.lower()))
+
+    def is_match(self, a: str, b: str) -> bool:
+        """
+        Determines if two ingredient strings match.
+
+        FIXES:
+        - Prevents false positives like:
+            "chicken" matching "chicken stock"
+
+        Logic:
+        - Token intersection must exist
+
+        Args:
+            a (str): ingredient A
+            b (str): ingredient B
+
+        Returns:
+            bool: True if match exists
+        """
+        return len(self.clean_tokens(a) & self.clean_tokens(b)) > 0
+
+    def generate(self, ingredients, strategy):
         """
         Generates ranked recipe recommendations.
 
-        Steps:
-        1. Normalize input ingredients
-        2. Retrieve candidate meals via MCP search tool
-        3. Fetch full recipe details via MCP tool
-        4. Rank recipes using ingredient coverage scoring
-        5. Return top results with explanations
+        Pipeline:
+        1. Normalize user ingredients
+        2. Retrieve candidate meals via MCP search
+        3. Fetch full recipe details
+        4. Rank recipes by ingredient overlap
+        5. Return top 3 results
+
+        Args:
+            ingredients (list[str])
+            strategy (str): user goal / dietary strategy
+
+        Returns:
+            tuple:
+                - list[dict]: ranked recipes
+                - str: explanation message
         """
 
         ingredients = [
@@ -43,13 +110,11 @@ class RecipeAgent:
         meal_pool = {}
 
         for ingredient in ingredients:
-
             try:
                 data = self.mcp.call_tool(
                     "search_meals",
                     ingredient=ingredient
                 )
-
             except Exception as e:
                 return [], f"MCP search failed: {str(e)}"
 
@@ -65,7 +130,6 @@ class RecipeAgent:
         recipes = []
 
         for index, recipe in enumerate(ranked[:3]):
-
             recipes.append({
                 "name": recipe["name"],
                 "image": recipe["image"],
@@ -74,6 +138,8 @@ class RecipeAgent:
                 "coverage": recipe["coverage"],
                 "matched": recipe["matched"],
                 "missing": recipe["missing"],
+                "additional": recipe["additional"],
+                "country": recipe.get("country", "Unknown"),
                 "rank": index + 1,
                 "why": self.explain(strategy, recipe)
             })
@@ -81,22 +147,36 @@ class RecipeAgent:
         return recipes, "Recipes ranked using multi-agent ingredient intelligence."
 
     def rank_recipes(self, meals, ingredients):
-
         """
         Ranks recipes based on ingredient overlap.
 
-        Process:
-        1. Fetch full recipe details via MCP tool
-        2. Extract ingredient list
-        3. Compare against user ingredients
-        4. Compute coverage score
-        5. Apply bonus for higher overlap
-        6. Sort recipes by final score
+        Steps:
+        1. Fetch full recipe details via MCP
+        2. Extract structured ingredient list
+        3. Compare against user input
+        4. Compute:
+            - matched ingredients
+            - missing ingredients (user input not in recipe)
+            - additional ingredients (recipe requires but user lacks)
+        5. Compute coverage score
+        6. Sort by score
+
+        Args:
+            meals (list)
+            ingredients (list[str])
+
+        Returns:
+            list[dict]: ranked recipes
         """
 
         results = []
 
+        user_ingredients = [
+            self.normalize(i) for i in ingredients
+        ]
+
         for meal in meals:
+
             try:
                 details = self.mcp.call_tool(
                     "get_meal",
@@ -110,84 +190,107 @@ class RecipeAgent:
 
             recipe = details["meals"][0]
 
-            recipe_items = [
-                x.lower()
-                for x in self.extract(recipe)
+            extracted = self.extract(recipe)
+
+            recipe_ingredients = [
+                self.normalize(i["ingredient"])
+                for i in extracted
             ]
 
             matched = []
             missing = []
 
-            for user_item in ingredients:
-
-                found = any(user_item in r for r in recipe_items)
+            for ui in user_ingredients:
+                found = any(
+                    self.is_match(ui, ri)
+                    for ri in recipe_ingredients
+                )
 
                 if found:
-                    matched.append(user_item)
+                    matched.append(ui)
                 else:
-                    missing.append(user_item)
+                    missing.append(ui)
 
-            if len(ingredients) == 0:
-                coverage = 0
-            else:
-                coverage = round(len(matched) / len(ingredients) * 100)
+            matched = list(set(matched))
+            missing = list(set(missing))
 
-            score = coverage
+            additional = []
 
-            if len(matched) >= 2:
-                score += 20
+            for ri in recipe_ingredients:
+                if not any(self.is_match(ri, ui) for ui in user_ingredients):
+                    additional.append(ri)
+
+            additional = list(dict.fromkeys(additional))
+
+            coverage = round(
+                len(matched) / len(user_ingredients) * 100
+            ) if user_ingredients else 0
+
+            score = coverage + (20 if len(matched) >= 2 else 0)
 
             results.append({
                 "score": score,
                 "name": recipe["strMeal"],
                 "image": recipe["strMealThumb"],
-                "ingredients": recipe_items,
+                "ingredients": [
+                    f"{i['measure']} {i['ingredient']}".strip()
+                    for i in extracted
+                ],
                 "instructions": recipe["strInstructions"],
                 "coverage": coverage,
                 "matched": matched,
-                "missing": missing
+                "missing": missing,
+                "additional": additional,
+                "country": recipe.get("strArea", "Unknown")
             })
 
         return sorted(results, key=lambda x: x["score"], reverse=True)
 
     def extract(self, meal):
-        
         """
-        Extracts ingredient list from MealDB API response.
+        Extracts structured ingredients from MealDB response.
 
-        The API stores ingredients in fields:
-        strIngredient1 ... strIngredient20
+        MealDB format:
+        - strIngredient1 ... strIngredient20
+        - strMeasure1 ... strMeasure20
 
-        This function:
-        - collects non-empty values
-        - normalizes formatting
-        - returns a clean list of ingredients
+        Returns:
+            list[dict]:
+                {
+                    "ingredient": str,
+                    "measure": str
+                }
         """
 
         items = []
 
         for i in range(1, 21):
-            item = meal.get(f"strIngredient{i}")
-            if item and item.strip():
-                items.append(item.strip())
+            ingredient = meal.get(f"strIngredient{i}")
+            measure = meal.get(f"strMeasure{i}")
+
+            if ingredient and ingredient.strip():
+                items.append({
+                    "ingredient": ingredient.strip(),
+                    "measure": (measure or "").strip()
+                })
 
         return items
 
     def explain(self, strategy, recipe):
-
         """
-        Generates a simple explanation of why a recipe was selected.
+        Generates human-readable explanation for recipe ranking.
+
+        Args:
+            strategy (str)
+            recipe (dict)
 
         Returns:
-        - strategy used
-        - ingredient match percentage
-        - matched ingredients
-        - missing ingredients
+            str: explanation text
         """
 
         return (
             f"⭐ Recommended for {strategy}\n\n"
             f"Match: {recipe['coverage']}%\n"
-            f"Uses: {', '.join(recipe['matched'])}\n"
+            f"Uses: {', '.join(recipe['matched']) if recipe['matched'] else 'None'}\n"
             f"Missing: {', '.join(recipe['missing']) if recipe['missing'] else 'None'}"
         )
