@@ -18,7 +18,17 @@ country_flags = {
     "Vietnamese": "🇻🇳",
     "Malaysian": "🇲🇾",
     "Turkish": "🇹🇷",
-    "Jamaican": "🇯🇲"
+    "Jamaican": "🇯🇲",
+    "Moroccan": "🇲🇦",
+    "Lebanese": "🇱🇧",   
+    "Saudi Arabian": "🇸🇦",
+    "Korean": "🇰🇷",
+    "Indonesian": "🇮🇩",
+    "Brazilian": "🇧🇷",
+    "Argentinian": "🇦🇷",
+    "Russian": "🇷🇺",
+    "South African": "🇿🇦",
+    "Australian": "🇦🇺",    
 }
 
 st.set_page_config(
@@ -26,29 +36,29 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🍳 FridgeChef AI")
+st.title("FridgeChef AI")
 st.caption(
     "Multi-agent AI system for personalized meal planning using ingredient intelligence, nutrition modeling, and MCP-based tools"
 )
 
 # User input 
 ingredients = st.text_area(
-    "🥕 Enter ingredients (comma separated)",
+    "Enter ingredients (comma separated)",
     placeholder="chicken, rice, eggs"
 )
 
 goal = st.selectbox(
-    "🎯 Select your goal",
+    "Select your goal",
     ["Lose Weight", "Maintenance", "Weight Gain"]
 )
 
-st.subheader("🧍 Personal Profile")
+st.subheader("Personal Profile")
 
 weight_input = st.text_input("Weight (kg)", placeholder="e.g. 70")
 height_input = st.text_input("Height (cm)", placeholder="e.g. 170")
 
 diet_pref = st.selectbox(
-    "🥗 Dietary Preference",
+    "Dietary Preference",
     ["None", "High Protein", "Low Carb", "Vegetarian"]
 )
 
@@ -97,7 +107,7 @@ if st.button("✨ Generate Meal Plan"):
     st.success("Meal plan generated!")
 
     # Nutrition summary
-    st.subheader("🥗 Nutrition Profile")
+    st.subheader("Nutrition Profile")
 
     nutrition = result.get("nutrition", {})
 
@@ -120,11 +130,11 @@ if st.button("✨ Generate Meal Plan"):
             st.success(f"✔ {abs(diff)} calories under target")
 
     # Execution trace
-    with st.expander("🔍 Agent Execution Trace"):
+    with st.expander("Agent Execution Trace"):
         st.json(result.get("trace", []))
 
     # Explanation
-    st.subheader("💡 AI Reasoning")
+    st.subheader("AI Reasoning")
     reason = result.get("reason", "")
 
     if reason:
@@ -133,7 +143,7 @@ if st.button("✨ Generate Meal Plan"):
         st.info("No explanation was generated for this run.")
 
     # Results
-    st.markdown("## 🍽 Recommended Meal Plan")
+    st.markdown("##Recommended Meal Plan")
 
     for r in recipes:
 
