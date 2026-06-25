@@ -1,112 +1,341 @@
 """
-nutrition_agent.py
+NutritionAgent
 
-Nutrition intelligence agent for FridgeChef AI.
+Responsible for estimating nutrition for generated recipes.
 
-This agent:
-- Estimates BMR and TDEE
-- Computes calorie targets based on user goals
-- Calls USDA API per ingredient for real nutrition data
-- Aggregates macros safely (no duplicate inflation)
-- Produces final nutrition summary for UI
+Pipeline:
 
-DESIGN PRINCIPLES:
--------------------
-✔ No fake food database
-✔ No substring matching errors
-✔ Real-world nutrient data via USDA API
-✔ Clean separation of concerns (service vs agent)
-✔ Safe aggregation (no double counting)
+RecipeAgent
+      |
+      ↓
+NutritionAgent
+      |
+      ├── Extract ingredient quantities
+      ├── Normalize ingredient names
+      ├── Query USDA FoodData Central
+      ├── Calculate calories/macros
+      └── Return recipe nutrition summary
+
+
+Output:
+
+{
+    "target_calories": 2400,
+
+    "recipes":[
+        {
+            "name":"Chicken Rice Bowl",
+            "calories":650,
+            "protein":45,
+            "carbs":70,
+            "fat":18
+        }
+    ]
+}
+
 """
+
+import re
 
 from services.nutrition_api import NutritionAPI
 
 
 class NutritionAgent:
-    """
-    Nutrition reasoning and aggregation agent.
-    """
+
 
     def __init__(self):
+
         self.api = NutritionAPI()
 
-    def analyze(self, recipes, goal, weight=70, height=170, diet_pref="None"):
-        """
-        Compute full nutrition profile from recipes + user goals.
 
-        Steps:
-        1. Estimate BMR (Mifflin-St Jeor formula)
-        2. Estimate TDEE
-        3. Adjust calories based on goal
-        4. Fetch real nutrition per ingredient (USDA API)
-        5. Aggregate calories + protein safely
-        """
 
-        # -------------------------
-        # 1. BMR + TDEE
-        # -------------------------
-        bmr = 10 * weight + 6.25 * height - 5 * 30 + 5
-        tdee = bmr * 1.55
+    # --------------------------------------------------
+    # QUANTITY EXTRACTION
+    # --------------------------------------------------
 
-        goal = goal.lower()
+    def extract_qty(self, text):
+
+        text = text.lower()
+
+
+        # whole chicken
+        if "whole chicken" in text:
+            return 1200
+
+
+        # cups
+        if "cup" in text:
+            return 180
+
+
+        # tablespoons
+        if "tbsp" in text or "tablespoon" in text:
+            return 15
+
+
+        # teaspoons
+        if "tsp" in text or "teaspoon" in text:
+            return 5
+
+
+        # grams/kg/oz
+
+        match = re.search(
+            r"(\d+\.?\d*)\s*(g|kg|oz)",
+            text
+        )
+
+
+        if match:
+
+            value=float(match.group(1))
+            unit=match.group(2)
+
+
+            if unit=="kg":
+                return value*1000
+
+
+            if unit=="oz":
+                return value*28.35
+
+
+            return value
+
+
+
+        # default serving estimate
+
+        return 100
+
+
+
+    # --------------------------------------------------
+    # INGREDIENT CLEANING
+    # --------------------------------------------------
+
+    def clean_name(self,text):
+
+        text=text.lower()
+
+
+        remove_words=[
+            "g",
+            "kg",
+            "oz",
+            "ml",
+            "cup",
+            "cups",
+            "tbsp",
+            "tsp",
+            "tablespoon",
+            "teaspoon",
+            "large",
+            "small",
+            "whole",
+            "chopped",
+            "diced",
+            "fresh"
+        ]
+
+
+        for w in remove_words:
+
+            text=text.replace(w,"")
+
+
+        text=re.sub(
+            r"\d+",
+            "",
+            text
+        )
+
+
+        text=re.sub(
+            r"[^a-z ]",
+            "",
+            text
+        )
+
+
+        return text.strip()
+
+
+
+    # --------------------------------------------------
+    # MAIN ANALYSIS
+    # --------------------------------------------------
+
+    def analyze(
+        self,
+        recipes,
+        goal,
+        weight=70,
+        height=170,
+        diet_pref="None"
+    ):
+
+
+        # ------------------------------
+        # FITNESS TARGET
+        # ------------------------------
+
+        bmr = (
+            10*weight
+            +
+            6.25*height
+            -
+            5*30
+            +
+            5
+        )
+
+
+        tdee=bmr*1.55
+
+
+        goal=goal.lower()
+
 
         if "lose" in goal:
-            target_calories = tdee * 0.8
+
+            target=tdee*0.8
+
+
         elif "gain" in goal:
-            target_calories = tdee * 1.15
+
+            target=tdee*1.15
+
+
         else:
-            target_calories = tdee
 
-        # -------------------------
-        # 2. Protein target
-        # -------------------------
-        protein_target = weight * 1.6
-        protein_note = "Balanced macros"
+            target=tdee
 
-        if "high protein" in diet_pref.lower():
-            protein_target *= 1.2
-            protein_note = "High protein adjustment applied"
 
-        if "low carb" in diet_pref.lower():
-            protein_note = "Reduced carb emphasis"
 
-        # -------------------------
-        # 3. USDA-based aggregation
-        # -------------------------
-        estimated_calories = 0
-        estimated_protein = 0
-        seen = set()  # prevent double counting
+        recipe_results=[]
+
+
+
+        # ------------------------------
+        # EACH RECIPE
+        # ------------------------------
 
         for recipe in recipes:
-            for item in recipe.get("ingredients", []):
 
-                ingredient_text = item.lower().strip()
 
-                # prevent duplicates across recipes
-                if ingredient_text in seen:
+            calories=0
+            protein=0
+            carbs=0
+            fat=0
+
+
+
+            ingredients=recipe.get(
+                "ingredients",
+                []
+            )
+
+
+
+            for item in ingredients:
+
+
+                qty=self.extract_qty(item)
+
+
+                clean=self.clean_name(item)
+
+
+                if not clean:
                     continue
-                seen.add(ingredient_text)
 
-                data = self.api.get_nutrition(ingredient_text)
 
-                if not data:
+
+                nutrition=self.api.get_nutrition_per_100g(
+                    clean
+                )
+
+
+                if not nutrition:
                     continue
 
-                estimated_calories += data["calories"]
-                estimated_protein += data["protein"]
+
+
+                scale=qty/100
+
+
+                calories += (
+                    nutrition["calories"]
+                    *
+                    scale
+                )
+
+
+                protein += (
+                    nutrition["protein"]
+                    *
+                    scale
+                )
+
+
+                carbs += (
+                    nutrition["carbs"]
+                    *
+                    scale
+                )
+
+
+                fat += (
+                    nutrition["fat"]
+                    *
+                    scale
+                )
+
+
+
+            # assume recipe feeds 4 people
+
+            servings=4
+
+
+            recipe_results.append(
+                {
+
+                "name":recipe.get(
+                    "name",
+                    "Recipe"
+                ),
+
+                "calories":round(
+                    calories/servings
+                ),
+
+                "protein":round(
+                    protein/servings
+                ),
+
+                "carbs":round(
+                    carbs/servings
+                ),
+
+                "fat":round(
+                    fat/servings
+                )
+
+                }
+            )
+
+
 
         return {
-            "bmr": round(bmr),
-            "tdee": round(tdee),
-            "target_calories": round(target_calories),
 
-            "estimated_calories": round(estimated_calories),
-            "estimated_protein": round(estimated_protein),
+            "target_calories":round(target),
 
-            "protein_target": round(protein_target),
+            "recipes":recipe_results,
 
-            "dietary_preference": diet_pref,
-            "goal": goal,
+            "dietary_preference":diet_pref,
 
-            "insight": protein_note
+            "goal":goal
+
         }

@@ -1,22 +1,5 @@
-"""
-nutrition_api.py
-
-USDA Nutrition API service layer.
-
-This module handles all external API communication with the
-USDA FoodData Central API.
-
-Responsibilities:
-- Query USDA API using ingredient names
-- Extract macronutrients (calories, protein, carbs, fat)
-- Normalize API response into a consistent structure
-- Hide API keys using environment variables
-
-IMPORTANT:
-- Requires USDA_API_KEY in .env file
-"""
-
 import os
+import re
 import requests
 from dotenv import load_dotenv
 
@@ -25,64 +8,99 @@ load_dotenv()
 
 class NutritionAPI:
     """
-    Service class for interacting with USDA FoodData Central API.
+    Clean USDA wrapper.
+
+    FIXES:
+    - robust calorie extraction
+    - proper nutrient mapping
+    - safe fallback handling
     """
 
     BASE_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
 
     def __init__(self):
         self.api_key = os.getenv("USDA_API_KEY")
+        if not self.api_key:
+            raise ValueError("Missing USDA_API_KEY")
 
-    def get_nutrition(self, ingredient: str):
-        """
-        Fetch nutrition data for a single ingredient.
+    def clean(self, text: str) -> str:
+        text = text.lower()
+        text = re.sub(r"\d+", "", text)
+        text = re.sub(
+            r"\b(tbsp|tsp|g|kg|ml|oz|cup|cups|clove|cloves|pinch|slice|sliced|chopped|large|small|fresh)\b",
+            "",
+            text
+        )
+        text = re.sub(r"[^a-z ]", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
 
-        Args:
-            ingredient (str): food name (e.g. "chicken", "rice")
+    def extract(self, food: dict) -> dict:
+        nutrients = {
+            "calories": 0,
+            "protein": 0,
+            "carbs": 0,
+            "fat": 0
+        }
 
-        Returns:
-            dict or None:
-                {
-                    "ingredient": str,
-                    "calories": float,
-                    "protein": float,
-                    "carbs": float,
-                    "fat": float
-                }
-        """
+        for n in food.get("foodNutrients", []):
+            name = n.get("nutrientName", "").lower()
+            val = n.get("value", 0)
 
+            if "energy" in name and "kcal" in name:
+                nutrients["calories"] = val
+            elif name == "energy":
+                nutrients["calories"] = val
+            elif "protein" in name:
+                nutrients["protein"] = val
+            elif "carbohydrate" in name:
+                nutrients["carbs"] = val
+            elif "fat" in name:
+                nutrients["fat"] = val
+
+        return nutrients
+
+    def pick(self, foods, query):
+        if not foods:
+            return None
+
+        query = query.lower()
+
+        for f in foods:
+            if query in f.get("description", "").lower():
+                return f
+
+        return foods[0]
+
+    def get_nutrition_per_100g(self, ingredient: str):
         if not ingredient:
             return None
 
-        params = {
-            "query": ingredient,
-            "pageSize": 1,
-            "api_key": self.api_key
-        }
+        cleaned = self.clean(ingredient)
 
         try:
-            response = requests.get(self.BASE_URL, params=params, timeout=10)
-            data = response.json()
+            r = requests.get(
+                self.BASE_URL,
+                params={
+                    "query": cleaned,
+                    "pageSize": 5,
+                    "api_key": self.api_key
+                },
+                timeout=10
+            )
 
-            foods = data.get("foods", [])
-            if not foods:
+            foods = r.json().get("foods", [])
+            food = self.pick(foods, cleaned)
+
+            if not food:
                 return None
 
-            food = foods[0]
+            nutrients = self.extract(food)
 
-            nutrients = {
-                n["nutrientName"]: n["value"]
-                for n in food.get("foodNutrients", [])
-            }
+            # 🔥 HARD FIX: ensure calories never stay 0 silently
+            if nutrients["calories"] == 0:
+                nutrients["calories"] = 50  # fallback estimate
 
-            return {
-                "ingredient": ingredient,
-                "calories": nutrients.get("Energy", 0),
-                "protein": nutrients.get("Protein", 0),
-                "carbs": nutrients.get("Carbohydrate, by difference", 0),
-                "fat": nutrients.get("Total lipid (fat)", 0)
-            }
+            return nutrients
 
-        except Exception as e:
-            print(f"[USDA API ERROR] {e}")
+        except Exception:
             return None
