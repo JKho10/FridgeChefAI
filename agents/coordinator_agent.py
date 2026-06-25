@@ -17,16 +17,12 @@ class CoordinatorAgent:
 
         trace = []
 
-        # -----------------------------
-        # Normalize inputs (IMPORTANT FIX)
-        # -----------------------------
         diet_pref = (diet_pref or "none").strip().lower()
 
         # -----------------------------
-        # Validate required fields
+        # Validate
         # -----------------------------
         missing_fields = []
-
         if not age:
             missing_fields.append("age")
         if not sex:
@@ -44,10 +40,9 @@ class CoordinatorAgent:
             }
 
         # -----------------------------
-        # Safety check
+        # Safety
         # -----------------------------
         safety = self.safety_agent.check(user_input)
-
         trace.append({"step": "safety", "result": safety})
 
         if safety and "unsafe" in safety.lower():
@@ -60,57 +55,50 @@ class CoordinatorAgent:
             }
 
         # -----------------------------
-        # Parse ingredients
+        # Parse
         # -----------------------------
         ingredients = self._parse(user_input)
-
         trace.append({"step": "parse", "ingredients": ingredients})
 
         # -----------------------------
-        # Strategy selection
+        # Strategy
         # -----------------------------
         strategy = meal_planning_skill(ingredients, goal)
-
         trace.append({"step": "strategy", "strategy": strategy})
 
         # -----------------------------
-        # Retry loop (FIXED)
+        # SINGLE recipe generation (FIXED CORE)
         # -----------------------------
-        best_recipes = []
-        reason = ""
+        recipes, reason = self.recipe_agent.generate(
+            ingredients,
+            strategy,
+            diet_pref
+        )
 
-        for attempt in range(2):
+        trace.append({
+            "step": "recipe_generation",
+            "recipe_count": len(recipes),
+            "reason": reason
+        })
 
-            recipes, reason = self.recipe_agent.generate(
-                ingredients,
-                strategy,
-                diet_pref
-            )
+        # fallback safety
+        if not recipes:
+            return {
+                "recipes": [],
+                "nutrition": {},
+                "shopping_list": [],
+                "trace": trace,
+                "reason": reason
+            }
 
-            quality = recipes[0].get("coverage", 0) if recipes else 0
+        # -----------------------------
+        # FORCE TOP 3 CLEANLY
+        # -----------------------------
+        best_recipes = recipes[:3]
 
-            trace.append({
-                "step": f"recipe_attempt_{attempt}",
-                "recipe_count": len(recipes),
-                "quality_score": quality
-            })
-
-            trace.append({
-                "step": "reflection",
-                "attempt": attempt,
-                "decision": "accepted" if quality >= 60 else "retry"
-            })
-
-            if recipes and quality >= 60:
-                best_recipes = recipes[:3]
-                break
-
-            if recipes:
-                best_recipes = recipes[:3]
-
-            # REAL refinement (not fake mutation)
-            if attempt == 0:
-                strategy = meal_planning_skill(ingredients, goal)
+        # if less than 3, safely duplicate
+        while len(best_recipes) < 3:
+            best_recipes.append(best_recipes[len(best_recipes) % len(best_recipes)])
 
         # -----------------------------
         # Nutrition
@@ -135,7 +123,7 @@ class CoordinatorAgent:
         })
 
         # -----------------------------
-        # Shopping list
+        # Shopping
         # -----------------------------
         shopping = self.shopping_agent.create_list(best_recipes)
 
@@ -145,7 +133,7 @@ class CoordinatorAgent:
         })
 
         # -----------------------------
-        # Final output
+        # FINAL OUTPUT
         # -----------------------------
         return {
             "recipes": best_recipes,

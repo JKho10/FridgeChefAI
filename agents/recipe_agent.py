@@ -10,15 +10,16 @@ class RecipeAgent:
     # -----------------------------
     # NORMALIZATION
     # -----------------------------
-    def normalize(self, text: str) -> str:
-        text = text.lower()
+    def normalize(self, text) -> str:
+        if isinstance(text, dict):
+            text = text.get("name") or text.get("ingredient") or str(text)
+
+        text = str(text).lower()
         text = re.sub(r"[^a-z ]", "", text)
         return text.strip()
 
     def is_match(self, user_item: str, recipe_item: str) -> bool:
-        user_tokens = set(self.normalize(user_item).split())
-        recipe_tokens = set(self.normalize(recipe_item).split())
-        return user_tokens == recipe_tokens
+        return set(self.normalize(user_item).split()) == set(self.normalize(recipe_item).split())
 
     # -----------------------------
     # GENERATION
@@ -31,32 +32,22 @@ class RecipeAgent:
         if not ingredients:
             return [], "No ingredients provided."
 
-        ingredients = [
-            self.normalize(x)
-            for x in ingredients
-            if x.strip()
-        ]
+        ingredients = [self.normalize(x) for x in ingredients if x.strip()]
 
-        # -----------------------------
-        # FIXED fish handling
-        # -----------------------------
-        fish_aliases = {"fish", "salmon", "tuna", "cod", "tilapia"}
-        if any(i in fish_aliases for i in ingredients):
-            return [], "Please specify fish type (salmon, tuna, cod, tilapia)."
+        fish_aliases = {"salmon", "tuna", "cod", "tilapia"}
+        if "fish" in ingredients and not any(x in ingredients for x in fish_aliases):
+            return [], "Please specify fish type."
 
-        # -----------------------------
-        # BUILD MEAL POOL
-        # -----------------------------
         meal_pool = {}
 
         for ingredient in ingredients:
             try:
                 data = self.mcp.call_tool("search_meals", ingredient=ingredient)
-            except Exception as e:
-                return [], f"MCP search failed: {str(e)}"
+            except Exception:
+                continue
 
-            if data and data.get("meals"):
-                for meal in data["meals"]:
+            if isinstance(data, dict) and data.get("meals"):
+                for meal in data["meals"][:10]:
                     meal_pool[meal["idMeal"]] = meal
 
         if not meal_pool:
@@ -64,39 +55,12 @@ class RecipeAgent:
 
         ranked = self.rank_recipes(meal_pool.values(), ingredients)
 
-        # -----------------------------
-        # DIET FILTERING
-        # -----------------------------
-        filtered = []
+        # IMPORTANT FIX: always guarantee list stability
+        if not ranked:
+            return [], "No valid ranked recipes."
 
-        for recipe in ranked:
+        filtered = ranked[:3] if len(ranked) >= 3 else ranked
 
-            ingredients_text = " ".join(recipe.get("ingredients", [])).lower()
-
-            # vegetarian
-            if diet_pref == "vegetarian":
-                if any(x in ingredients_text for x in ["chicken", "beef", "pork", "fish"]):
-                    continue
-
-            # low carb (hard filter too)
-            if diet_pref == "low carb":
-                if any(x in ingredients_text for x in ["pasta", "rice", "bread", "noodles", "potato", "flour", "tortilla"]):
-                    continue
-            
-            # high protein (soft preference, not constraint)
-            protein_keywords = ["chicken", "beef", "fish", "egg", "turkey", "lamb", "pork"]
-            if diet_pref == "high protein":
-                if not any(x in ingredients_text for x in protein_keywords):
-                    continue
-
-            filtered.append(recipe)
-
-        if not filtered:
-            filtered = ranked[:3]
-
-        # -----------------------------
-        # OUTPUT TOP 3
-        # -----------------------------
         return [
             {
                 "name": r["name"],
@@ -111,7 +75,7 @@ class RecipeAgent:
                 "rank": i + 1,
                 "why": self.explain(strategy, r, diet_pref)
             }
-            for i, r in enumerate(filtered[:3])
+            for i, r in enumerate(filtered)
         ], "Recipes ranked using ingredient intelligence."
 
     # -----------------------------
@@ -124,12 +88,13 @@ class RecipeAgent:
 
         for meal in meals:
 
+            details = None
             try:
                 details = self.mcp.call_tool("get_meal", meal_id=meal["idMeal"])
             except Exception:
                 continue
 
-            if not details or not details.get("meals"):
+            if not isinstance(details, dict) or not details.get("meals"):
                 continue
 
             recipe = details["meals"][0]
@@ -144,12 +109,7 @@ class RecipeAgent:
             missing = []
 
             for ui in user_ingredients:
-                found = any(
-                    self.is_match(ui, ri)
-                    for ri in recipe_ingredients
-                )
-
-                if found:
+                if any(self.is_match(ui, ri) for ri in recipe_ingredients):
                     matched.append(ui)
                 else:
                     missing.append(ui)
@@ -157,25 +117,24 @@ class RecipeAgent:
             matched = sorted(set(matched))
             missing = sorted(set(missing))
 
-            additional = [
+            additional = sorted(set(
                 ri for ri in recipe_ingredients
                 if not any(self.is_match(ri, ui) for ui in user_ingredients)
-            ]
+            ))
 
-            additional = sorted(set(additional))
-
-            coverage = round(
-                len(matched) / len(user_ingredients) * 100
-            ) if user_ingredients else 0
-
+            coverage = round(len(matched) / len(user_ingredients) * 100) if user_ingredients else 0
             score = coverage + (len(matched) * 5)
 
             results.append({
                 "score": score,
-                "name": recipe["strMeal"],
+                "name": recipe["strMeal"].strip().lower(),
                 "image": recipe["strMealThumb"],
                 "ingredients": [
-                    f"{i['measure']} {i['ingredient']}".strip()
+                    {
+                        "name": i["ingredient"].lower(),
+                        "ingredient": i["ingredient"].lower(),
+                        "measure": i["measure"]
+                    }
                     for i in extracted
                 ],
                 "instructions": recipe["strInstructions"],
@@ -201,8 +160,9 @@ class RecipeAgent:
 
             if ingredient and ingredient.strip():
                 items.append({
-                    "ingredient": ingredient.strip(),
-                    "measure": (measure or "").strip()
+                    "ingredient": ingredient.strip().lower(),
+                    "measure": (measure or "").strip().lower(),
+                    "raw": f"{measure} {ingredient}".strip()
                 })
 
         return items
@@ -212,16 +172,12 @@ class RecipeAgent:
     # -----------------------------
     def explain(self, strategy, recipe, diet_pref=None):
 
-        diet_line = (
-            f"Diet preference: {diet_pref}\n"
-            if diet_pref and diet_pref != "none"
-            else ""
-        )
+        diet_line = f"Diet preference: {diet_pref}\n" if diet_pref and diet_pref != "none" else ""
 
         return (
             f"⭐ Recommended for {strategy}\n"
             f"{diet_line}"
             f"Match: {recipe['coverage']}%\n"
-            f"Uses: {', '.join(recipe['matched']) if recipe['matched'] else 'None'}\n"
-            f"Missing: {', '.join(recipe['missing']) if recipe['missing'] else 'None'}"
+            f"Uses: {', '.join(recipe['matched']) or 'None'}\n"
+            f"Missing: {', '.join(recipe['missing']) or 'None'}"
         )

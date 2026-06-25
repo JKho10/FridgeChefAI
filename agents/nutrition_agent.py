@@ -1,14 +1,3 @@
-"""
-NutritionAgent (FIXED + STABLE + FAST)
-
-FIXES:
-✔ correct servings calculation
-✔ removes broken indentation bug
-✔ avoids recalculating per ingredient incorrectly
-✔ stable USDA scaling
-✔ consistent recipe output
-"""
-
 import re
 from services.nutrition_api import NutritionAPI
 
@@ -20,91 +9,79 @@ class NutritionAgent:
 
     ZERO_CAL = {
         "water", "salt", "pepper", "stock", "broth",
-        "spice", "parsley", "thyme"
-    }
-
-    UNIT_WEIGHTS = {
-        "whole chicken": 1200,
-        "chicken": 150,
-        "rice": 100,
-        "bread": 40,
-        "chocolate": 20,
-        "corn": 100,
-        "sweetcorn": 100,
-        "oil": 15,
-        "chorizo": 225,
-        "onion": 120,
-        "garlic": 10,
+        "spice", "parsley", "thyme", "bay leaf"
     }
 
     # -------------------------
     def extract_qty(self, text):
-        text = text.lower()
+        if not text:
+            return None
 
-        match = re.search(r"(\d+\.?\d*)\s*g", text)
-        if match:
-            return float(match.group(1))
+        text = str(text).lower()
 
-        match = re.search(r"(\d+\.?\d*)\s*kg", text)
-        if match:
-            return float(match.group(1)) * 1000
+        patterns = [
+            (r"(\d+\.?\d*)\s*kg", 1000),
+            (r"(\d+\.?\d*)\s*g", 1),
+            (r"(\d+\.?\d*)\s*ml", 1),
 
-        match = re.search(r"(\d+)\s*cups?", text)
-        if match:
-            return int(match.group(1)) * 180
+            (r"(\d+\.?\d*)\s*cups?", 240),
+            (r"(\d+\.?\d*)\s*(tbsp|tablespoons?)", 15),
+            (r"(\d+\.?\d*)\s*(tsp|teaspoons?)", 5),
 
-        match = re.search(r"(\d+)\s*(tbsp|tablespoon)", text)
-        if match:
-            return int(match.group(1)) * 15
+            (r"(\d+\.?\d*)\s*(lb|lbs|pound|pounds)", 453.592),
+            (r"(\d+\.?\d*)\s*(cloves?)", 5),
+        ]
+
+        for pattern, multiplier in patterns:
+            match = re.search(pattern, text)
+            if match:
+                return float(match.group(1)) * multiplier
 
         return None
 
     # -------------------------
     def clean_name(self, text):
-        text = text.lower()
+        if isinstance(text, dict):
+            text = text.get("name") or text.get("ingredient") or ""
+
+        text = str(text).lower()
         text = re.sub(r"\d+", "", text)
         text = re.sub(r"[^a-z ]", " ", text)
         return re.sub(r"\s+", " ", text).strip()
 
     # -------------------------
-    def estimate_weight(self, name, qty):
-        for key, value in self.UNIT_WEIGHTS.items():
-            if key in name:
-                return qty if qty else value
-        return qty or 100
+    def estimate_weight(self, name):
+        name = name.lower()
+
+        mapping = {
+            "carrot": 80,
+            "onion": 110,
+            "garlic": 5,
+            "tomato": 120,
+            "potato": 150,
+            "chicken": 165,
+            "beef": 170,
+            "rice": 185,
+            "egg": 50,
+            "oil": 15,
+            "flour": 100
+        }
+
+        for k, v in mapping.items():
+            if k in name:
+                return v
+
+        return 100
 
     # -------------------------
-    def calculate_target(self,goal,weight,height,age,sex,activity_level
-    ):
-        """
-        Estimates daily calorie target using
-        Mifflin-St Jeor equation.
-
-        Inputs:
-        - weight: kg
-        - height: cm
-        - age: years
-        - sex: male/female
-        - activity_level: sedentary/light/moderate/active
-        """
+    def calculate_target(self, goal, weight, height, age, sex, activity_level):
 
         if sex.lower() == "male":
-            bmr = (
-                10 * weight
-                + 6.25 * height
-                - 5 * age
-                + 5
-            )
-
+            bmr = (10 * weight + 6.25 * height - 5 * age + 5)
         else:
-            bmr = (
-                10 * weight
-                + 6.25 * height
-                - 5 * age
-                - 161
-            )
+            bmr = (10 * weight + 6.25 * height - 5 * age - 161)
 
-        activity_multipliers = {
+        multipliers = {
             "sedentary": 1.2,
             "light": 1.375,
             "moderate": 1.55,
@@ -112,16 +89,10 @@ class NutritionAgent:
             "very active": 1.9
         }
 
-        multiplier = activity_multipliers.get(
-            activity_level.lower(),
-            1.55
-        )
-
-        tdee = bmr * multiplier
+        tdee = bmr * multipliers.get(activity_level.lower(), 1.55)
 
         if "lose" in goal.lower():
             return tdee * 0.8
-
         if "gain" in goal.lower():
             return tdee * 1.15
 
@@ -137,26 +108,25 @@ class NutritionAgent:
         for recipe in recipes:
 
             total = {"calories": 0, "protein": 0, "carbs": 0, "fat": 0}
-            total_weight = 0
-
-            cleaned_cache = {}
 
             for ingredient in recipe.get("ingredients", []):
 
-                if ingredient in cleaned_cache:
-                    name, qty, grams, nutrition = cleaned_cache[ingredient]
+                if isinstance(ingredient, dict):
+                    name = ingredient.get("ingredient") or ingredient.get("name") or ""
+                    measure = ingredient.get("measure", "")
                 else:
-                    name = self.clean_name(ingredient)
+                    name = str(ingredient)
+                    measure = ""
 
-                    if any(x in name for x in self.ZERO_CAL):
-                        continue
+                if not name.strip():
+                    continue
 
-                    qty = self.extract_qty(ingredient)
-                    grams = self.estimate_weight(name, qty)
+                grams = self.extract_qty(measure + " " + name)
 
-                    nutrition = self.api.get_nutrition_per_100g(name)
+                if grams is None:
+                    grams = self.estimate_weight(name)
 
-                    cleaned_cache[ingredient] = (name, qty, grams, nutrition)
+                nutrition = self.api.get_nutrition_per_100g(self.clean_name(name))
 
                 if not nutrition:
                     continue
@@ -168,18 +138,25 @@ class NutritionAgent:
                 total["carbs"] += nutrition["carbs"] * multiplier
                 total["fat"] += nutrition["fat"] * multiplier
 
-                total_weight += grams
+            cals = total["calories"]
 
+            # -------------------------
             # FIXED SERVINGS LOGIC
-            servings = max(1, round(total_weight / 500))
+            # -------------------------
+            # more stable than thresholds, avoids UI confusion
+            servings = max(2, min(6, round(cals / 700)))
 
             results.append({
-                "name": recipe.get("name", "Recipe"),
-                "total_calories": round(total["calories"]),
-                "calories": round(total["calories"] / servings),
+                "name": recipe.get("name", "").strip().lower(),
+
+                "total_calories": round(cals),
+
+                # per serving
+                "calories": round(cals / servings),
                 "protein": round(total["protein"] / servings),
                 "carbs": round(total["carbs"] / servings),
                 "fat": round(total["fat"] / servings),
+
                 "servings": servings
             })
 
@@ -195,5 +172,5 @@ class NutritionAgent:
 
             "recipes": results,
             "goal": goal,
-            "dietary_preference": diet_pref
+            "dietary_preference": diet_pref or "none"
         }
