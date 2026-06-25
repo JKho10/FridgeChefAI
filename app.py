@@ -73,7 +73,6 @@ def clean_join(lst):
 def normalize_name(name):
     return str(name).strip().lower()
 
-
 # ---------------------------------------------------------
 # COUNTRY FLAGS
 # ---------------------------------------------------------

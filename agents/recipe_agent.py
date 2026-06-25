@@ -150,7 +150,7 @@ class RecipeAgent:
 
         results = []
 
-        user_ingredients = [self.normalize(i) for i in ingredients]
+        user_ingredients = list(set(self.normalize(i) for i in ingredients))
 
         for meal in meals:
             try:
