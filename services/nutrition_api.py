@@ -1,20 +1,21 @@
-"""
-NutritionAPI (USDA mapper)
-
-GOAL:
-- Prefer raw foods
-- Avoid processed junk bias
-"""
-
 import os
 import re
 import requests
 from dotenv import load_dotenv
+from functools import lru_cache
 
 load_dotenv()
 
 
 class NutritionAPI:
+    """
+    FAST USDA Nutrition Mapper (optimized)
+
+    FIXES:
+    - adds caching (major speed boost)
+    - avoids repeated API calls for same ingredient
+    - reduces Streamlit lag drastically
+    """
 
     BASE_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
 
@@ -23,14 +24,18 @@ class NutritionAPI:
         if not self.api_key:
             raise ValueError("Missing USDA_API_KEY")
 
-    def clean(self, text):
+    def clean(self, text: str) -> str:
         text = text.lower()
         text = re.sub(r"\d+", "", text)
-        text = re.sub(r"\b(cooked|fried|prepared|chopped|raw)\b", "", text)
+        text = re.sub(
+            r"\b(tbsp|tsp|g|kg|ml|oz|cup|cups|chopped|sliced|large|small|fresh)\b",
+            "",
+            text
+        )
         text = re.sub(r"[^a-z ]", " ", text)
         return re.sub(r"\s+", " ", text).strip()
 
-    def extract(self, food):
+    def extract(self, food: dict) -> dict:
         out = {"calories": 0, "protein": 0, "carbs": 0, "fat": 0}
 
         for n in food.get("foodNutrients", []):
@@ -48,44 +53,48 @@ class NutritionAPI:
 
         return out
 
-    def pick(self, foods, query):
+    def pick(self, foods, query: str):
         if not foods:
             return None
 
-        query_tokens = set(query.split())
+        query_tokens = set(query.lower().split())
 
         def score(f):
             d = f.get("description", "").lower()
             t = set(d.split())
 
-            s = len(query_tokens & t) * 30
+            s = 0
+            s += len(query_tokens & t) * 30
+            if query_tokens.issubset(t):
+                s += 50
             if "raw" in d:
                 s += 20
-            if "fried" in d:
+            if "fried" in d or "processed" in d:
                 s -= 50
+            s -= len(t) * 0.2
             return s
 
         return max(foods, key=score)
 
-    def get_nutrition_per_100g(self, ingredient):
-        if not ingredient:
-            return None
+    # ---------------------------------------------------------
+    # 🔥 CACHE LAYER (MAIN FIX)
+    # ---------------------------------------------------------
 
-        cleaned = self.clean(ingredient)
-
+    @lru_cache(maxsize=512)
+    def get_cached_nutrition(self, cleaned_query: str):
         try:
             r = requests.get(
                 self.BASE_URL,
                 params={
-                    "query": cleaned,
-                    "pageSize": 5,
+                    "query": cleaned_query,
+                    "pageSize": 8,
                     "api_key": self.api_key
                 },
                 timeout=10
             )
 
             foods = r.json().get("foods", [])
-            food = self.pick(foods, cleaned)
+            food = self.pick(foods, cleaned_query)
 
             if not food:
                 return None
@@ -94,3 +103,10 @@ class NutritionAPI:
 
         except:
             return None
+
+    def get_nutrition_per_100g(self, ingredient: str):
+        if not ingredient:
+            return None
+
+        cleaned = self.clean(ingredient)
+        return self.get_cached_nutrition(cleaned)

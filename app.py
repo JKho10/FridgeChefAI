@@ -109,8 +109,15 @@ if st.button("✨ Generate Meal Plan"):
     agent = CoordinatorAgent()
 
     progress = st.progress(0)
-    progress.progress(30, text="Generating recipes...")
-    time.sleep(0.2)
+
+    progress.progress(10, text="Analyzing ingredients...")
+    time.sleep(0.1)
+
+    progress.progress(40, text="Fetching recipes...")
+    time.sleep(0.1)
+
+    progress.progress(70, text="Calculating nutrition...")
+    time.sleep(0.1)
 
     result = agent.run(
         ingredients,
@@ -120,7 +127,7 @@ if st.button("✨ Generate Meal Plan"):
         diet_pref
     )
 
-    progress.progress(100, text="Complete")
+    progress.progress(100, text="Done")
 
     recipes = result.get("recipes", [])
     nutrition = result.get("nutrition", {})
