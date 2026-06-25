@@ -1,26 +1,3 @@
-"""
-CoordinatorAgent - Central orchestration layer for FridgeChef AI
-
-This agent is responsible for:
--------------------------------------------------
-✔ Validating user input via SafetyAgent
-✔ Parsing ingredients into normalized format
-✔ Selecting meal strategy via meal_planning_skill
-✔ Coordinating recipe generation via RecipeAgent
-✔ Running controlled retry logic for recipe quality
-✔ Triggering NutritionAgent for macro estimation
-✔ Generating shopping list via ShoppingAgent
-✔ Producing full execution trace for debugging
-
-DESIGN PRINCIPLES:
--------------------------------------------------
-✔ Coordinator does NOT compute nutrition itself
-✔ No ingredient logic duplication
-✔ No reliance on "matched count" as quality signal
-✔ Uses coverage score as primary ranking metric
-✔ Stable retry logic without strategy corruption
-"""
-
 from skills.meal_skill import meal_planning_skill
 from agents.recipe_agent import RecipeAgent
 from agents.nutrition_agent import NutritionAgent
@@ -36,44 +13,44 @@ class CoordinatorAgent:
         self.shopping_agent = ShoppingAgent()
         self.safety_agent = SafetyAgent()
 
-    # ---------------------------------------------------------
-    # MAIN PIPELINE
-    # ---------------------------------------------------------
-    def run(
-        self,
-        user_input,
-        goal,
-        weight=None,
-        height=None,
-        diet_pref="None"
-    ):
-        """
-        Executes full FridgeChef AI pipeline.
-
-        Steps:
-        ---------------------------------
-        1. Safety validation
-        2. Ingredient parsing
-        3. Strategy selection
-        4. Recipe generation (with retry loop)
-        5. Nutrition estimation (USDA-based downstream)
-        6. Shopping list generation
-        7. Trace aggregation
-        """
+    def run(self, user_input, goal, weight, height, age, sex, activity_level, diet_pref="None"):
 
         trace = []
 
         # -----------------------------
-        # 1. SAFETY CHECK
+        # Normalize inputs (IMPORTANT FIX)
+        # -----------------------------
+        diet_pref = (diet_pref or "none").strip().lower()
+
+        # -----------------------------
+        # Validate required fields
+        # -----------------------------
+        missing_fields = []
+
+        if not age:
+            missing_fields.append("age")
+        if not sex:
+            missing_fields.append("sex")
+        if not activity_level:
+            missing_fields.append("activity_level")
+
+        if missing_fields:
+            return {
+                "recipes": [],
+                "nutrition": {},
+                "shopping_list": [],
+                "trace": trace,
+                "reason": f"Missing required fields: {', '.join(missing_fields)}"
+            }
+
+        # -----------------------------
+        # Safety check
         # -----------------------------
         safety = self.safety_agent.check(user_input)
 
-        trace.append({
-            "step": "safety",
-            "result": safety
-        })
+        trace.append({"step": "safety", "result": safety})
 
-        if "unsafe" in safety.lower():
+        if safety and "unsafe" in safety.lower():
             return {
                 "recipes": [],
                 "nutrition": {},
@@ -83,27 +60,21 @@ class CoordinatorAgent:
             }
 
         # -----------------------------
-        # 2. PARSE INGREDIENTS
+        # Parse ingredients
         # -----------------------------
         ingredients = self._parse(user_input)
 
-        trace.append({
-            "step": "parse",
-            "ingredients": ingredients
-        })
+        trace.append({"step": "parse", "ingredients": ingredients})
 
         # -----------------------------
-        # 3. STRATEGY SELECTION
+        # Strategy selection
         # -----------------------------
         strategy = meal_planning_skill(ingredients, goal)
 
-        trace.append({
-            "step": "strategy",
-            "strategy": strategy
-        })
+        trace.append({"step": "strategy", "strategy": strategy})
 
         # -----------------------------
-        # 4. RECIPE GENERATION (RETRY LOOP FIXED)
+        # Retry loop (FIXED)
         # -----------------------------
         best_recipes = []
         reason = ""
@@ -112,13 +83,11 @@ class CoordinatorAgent:
 
             recipes, reason = self.recipe_agent.generate(
                 ingredients,
-                strategy
+                strategy,
+                diet_pref
             )
 
-            # SAFE QUALITY SCORE (FIXED)
-            quality = 0
-            if recipes:
-                quality = recipes[0].get("coverage", 0)
+            quality = recipes[0].get("coverage", 0) if recipes else 0
 
             trace.append({
                 "step": f"recipe_attempt_{attempt}",
@@ -132,26 +101,28 @@ class CoordinatorAgent:
                 "decision": "accepted" if quality >= 60 else "retry"
             })
 
-            # ACCEPT CONDITION (REALISTIC)
             if recipes and quality >= 60:
-                best_recipes = recipes
+                best_recipes = recipes[:3]
                 break
 
-            # fallback retention
-            if recipes and not best_recipes:
-                best_recipes = recipes
+            if recipes:
+                best_recipes = recipes[:3]
 
-            # refine strategy without destroying it
-            strategy = f"{strategy}_REFINED"
+            # REAL refinement (not fake mutation)
+            if attempt == 0:
+                strategy = meal_planning_skill(ingredients, goal)
 
         # -----------------------------
-        # 5. NUTRITION ANALYSIS
+        # Nutrition
         # -----------------------------
         nutrition = self.nutrition_agent.analyze(
             best_recipes,
             goal,
             weight,
             height,
+            age,
+            sex,
+            activity_level,
             diet_pref
         )
 
@@ -164,7 +135,7 @@ class CoordinatorAgent:
         })
 
         # -----------------------------
-        # 6. SHOPPING LIST
+        # Shopping list
         # -----------------------------
         shopping = self.shopping_agent.create_list(best_recipes)
 
@@ -174,7 +145,7 @@ class CoordinatorAgent:
         })
 
         # -----------------------------
-        # 7. FINAL RESPONSE
+        # Final output
         # -----------------------------
         return {
             "recipes": best_recipes,
@@ -186,22 +157,7 @@ class CoordinatorAgent:
             "reason": reason
         }
 
-    # ---------------------------------------------------------
-    # INGREDIENT PARSER
-    # ---------------------------------------------------------
     def _parse(self, text):
-        """
-        Converts user input string into normalized ingredient list.
-
-        Example:
-            "Chicken, Rice, Eggs"
-            → ["chicken", "rice", "eggs"]
-
-        NOTE:
-        This is intentionally simple.
-        Quantity parsing is handled downstream (Recipe/Nutrition agents).
-        """
-
         if not text:
             return []
 

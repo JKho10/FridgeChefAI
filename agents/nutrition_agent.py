@@ -74,20 +74,63 @@ class NutritionAgent:
         return qty or 100
 
     # -------------------------
-    def calculate_target(self, goal, weight, height):
-        bmr = 10 * weight + 6.25 * height - 5 * 30 + 5
-        tdee = bmr * 1.55
+    def calculate_target(self,goal,weight,height,age,sex,activity_level
+    ):
+        """
+        Estimates daily calorie target using
+        Mifflin-St Jeor equation.
+
+        Inputs:
+        - weight: kg
+        - height: cm
+        - age: years
+        - sex: male/female
+        - activity_level: sedentary/light/moderate/active
+        """
+
+        if sex.lower() == "male":
+            bmr = (
+                10 * weight
+                + 6.25 * height
+                - 5 * age
+                + 5
+            )
+
+        else:
+            bmr = (
+                10 * weight
+                + 6.25 * height
+                - 5 * age
+                - 161
+            )
+
+        activity_multipliers = {
+            "sedentary": 1.2,
+            "light": 1.375,
+            "moderate": 1.55,
+            "active": 1.725,
+            "very active": 1.9
+        }
+
+        multiplier = activity_multipliers.get(
+            activity_level.lower(),
+            1.55
+        )
+
+        tdee = bmr * multiplier
 
         if "lose" in goal.lower():
             return tdee * 0.8
+
         if "gain" in goal.lower():
             return tdee * 1.15
+
         return tdee
 
     # -------------------------
-    def analyze(self, recipes, goal, weight=70, height=170, diet_pref="None"):
+    def analyze(self, recipes, goal, weight, height, age, sex, activity_level, diet_pref="None"):
 
-        target = self.calculate_target(goal, weight, height)
+        target = self.calculate_target(goal, weight, height, age, sex, activity_level)
 
         results = []
 

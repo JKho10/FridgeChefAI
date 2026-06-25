@@ -110,3 +110,4 @@ class NutritionAPI:
 
         cleaned = self.clean(ingredient)
         return self.get_cached_nutrition(cleaned)
+        

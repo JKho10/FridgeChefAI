@@ -3,98 +3,55 @@ import re
 
 
 class RecipeAgent:
-    """
-    Recipe retrieval, ranking, and comparison agent.
-
-    This agent is responsible for:
-
-    1. Fetching recipes via MCP tool layer (MealDB wrapper)
-    2. Extracting structured ingredients from API responses
-    3. Normalizing and comparing user ingredients vs recipe ingredients
-    4. Preventing false matches (e.g. "chicken" ≠ "chicken stock")
-    5. Computing:
-        - matched ingredients (user has them)
-        - missing ingredients (user input not found in recipe)
-        - additional ingredients (recipe requires but user does not have)
-    6. Ranking recipes by ingredient coverage score
-
-    Key design principles:
-    - Token-based matching instead of substring matching
-    - Avoid false positives from partial words
-    - Deterministic scoring for consistent ranking
-    """
 
     def __init__(self):
-        """
-        Initialize MCP connection.
-        """
         self.mcp = MealMCPServer()
 
+    # -----------------------------
+    # NORMALIZATION
+    # -----------------------------
     def normalize(self, text: str) -> str:
-        """
-        Normalizes ingredient text:
-        - lowercase
-        - removes special characters
-        - trims whitespace
-        """
         text = text.lower()
         text = re.sub(r"[^a-z ]", "", text)
         return text.strip()
 
     def is_match(self, user_item: str, recipe_item: str) -> bool:
-        """
-        Strict ingredient matcher.
-
-        RULES:
-        ------
-        1. Exact match only OR
-        2. Token set must match exactly
-
-        This prevents:
-            "chicken" ≠ "chicken stock"
-        """
-
-        user_item = self.normalize(user_item)
-        recipe_item = self.normalize(recipe_item)
-
-        user_tokens = set(user_item.split())
-        recipe_tokens = set(recipe_item.split())
-
+        user_tokens = set(self.normalize(user_item).split())
+        recipe_tokens = set(self.normalize(recipe_item).split())
         return user_tokens == recipe_tokens
 
-    def generate(self, ingredients, strategy):
-        """
-        Generate ranked recipe recommendations.
+    # -----------------------------
+    # GENERATION
+    # -----------------------------
+    def generate(self, ingredients, strategy, diet_pref=None):
 
-        PIPELINE:
-        ---------
-        1. Normalize user input ingredients
-        2. Fetch candidate meals via MCP search
-        3. Retrieve full recipe details
-        4. Rank recipes
-        5. Return top 3 results
-        """
-
-        ingredients = [
-            x.lower().strip()
-            for x in ingredients
-            if x.strip()
-        ]
+        diet_pref = (diet_pref or "none").strip().lower()
+        strategy = (strategy or "").strip()
 
         if not ingredients:
             return [], "No ingredients provided."
 
-        if "fish" in ingredients:
+        ingredients = [
+            self.normalize(x)
+            for x in ingredients
+            if x.strip()
+        ]
+
+        # -----------------------------
+        # FIXED fish handling
+        # -----------------------------
+        fish_aliases = {"fish", "salmon", "tuna", "cod", "tilapia"}
+        if any(i in fish_aliases for i in ingredients):
             return [], "Please specify fish type (salmon, tuna, cod, tilapia)."
 
+        # -----------------------------
+        # BUILD MEAL POOL
+        # -----------------------------
         meal_pool = {}
 
         for ingredient in ingredients:
             try:
-                data = self.mcp.call_tool(
-                    "search_meals",
-                    ingredient=ingredient
-                )
+                data = self.mcp.call_tool("search_meals", ingredient=ingredient)
             except Exception as e:
                 return [], f"MCP search failed: {str(e)}"
 
@@ -103,61 +60,72 @@ class RecipeAgent:
                     meal_pool[meal["idMeal"]] = meal
 
         if not meal_pool:
-            return [], "No recipes found. Try chicken, rice, eggs, salmon."
+            return [], "No recipes found."
 
         ranked = self.rank_recipes(meal_pool.values(), ingredients)
 
-        recipes = []
+        # -----------------------------
+        # DIET FILTERING
+        # -----------------------------
+        filtered = []
 
-        for index, recipe in enumerate(ranked[:3]):
-            recipes.append({
-                "name": recipe["name"],
-                "image": recipe["image"],
-                "ingredients": recipe["ingredients"],
-                "instructions": recipe["instructions"],
-                "coverage": recipe["coverage"],
-                "matched": recipe["matched"],
-                "missing": recipe["missing"],
-                "additional": recipe["additional"],
-                "country": recipe.get("country", "Unknown"),
-                "rank": index + 1,
-                "why": self.explain(strategy, recipe)
-            })
+        for recipe in ranked:
 
-        return recipes, "Recipes ranked using ingredient intelligence."
+            ingredients_text = " ".join(recipe.get("ingredients", [])).lower()
 
-    # ---------------------------------------------------------
-    # RANKING ENGINE
-    # ---------------------------------------------------------
+            # vegetarian
+            if diet_pref == "vegetarian":
+                if any(x in ingredients_text for x in ["chicken", "beef", "pork", "fish"]):
+                    continue
+
+            # low carb (hard filter too)
+            if diet_pref == "low carb":
+                if any(x in ingredients_text for x in ["pasta", "rice", "bread", "noodles", "potato", "flour", "tortilla"]):
+                    continue
+            
+            # high protein (soft preference, not constraint)
+            protein_keywords = ["chicken", "beef", "fish", "egg", "turkey", "lamb", "pork"]
+            if diet_pref == "high protein":
+                if not any(x in ingredients_text for x in protein_keywords):
+                    continue
+
+            filtered.append(recipe)
+
+        if not filtered:
+            filtered = ranked[:3]
+
+        # -----------------------------
+        # OUTPUT TOP 3
+        # -----------------------------
+        return [
+            {
+                "name": r["name"],
+                "image": r["image"],
+                "ingredients": r["ingredients"],
+                "instructions": r["instructions"],
+                "coverage": r["coverage"],
+                "matched": r["matched"],
+                "missing": r["missing"],
+                "additional": r["additional"],
+                "country": r.get("country", "Unknown"),
+                "rank": i + 1,
+                "why": self.explain(strategy, r, diet_pref)
+            }
+            for i, r in enumerate(filtered[:3])
+        ], "Recipes ranked using ingredient intelligence."
+
+    # -----------------------------
+    # RANKING
+    # -----------------------------
     def rank_recipes(self, meals, ingredients):
-        """
-        Rank recipes based on ingredient overlap.
-
-        OUTPUT METRICS:
-        ----------------
-        matched:
-            ingredients user HAS that appear in recipe
-
-        missing:
-            user ingredients NOT found in recipe
-
-        additional:
-            ingredients required by recipe but not in user input
-
-        coverage:
-            % of user ingredients matched
-        """
 
         results = []
-
-        user_ingredients = list(set(self.normalize(i) for i in ingredients))
+        user_ingredients = sorted(set(self.normalize(i) for i in ingredients))
 
         for meal in meals:
+
             try:
-                details = self.mcp.call_tool(
-                    "get_meal",
-                    meal_id=meal["idMeal"]
-                )
+                details = self.mcp.call_tool("get_meal", meal_id=meal["idMeal"])
             except Exception:
                 continue
 
@@ -172,9 +140,6 @@ class RecipeAgent:
                 for i in extracted
             ]
 
-            # --------------------------
-            # MATCHED / MISSING
-            # --------------------------
             matched = []
             missing = []
 
@@ -192,25 +157,18 @@ class RecipeAgent:
             matched = sorted(set(matched))
             missing = sorted(set(missing))
 
-            # --------------------------
-            # ADDITIONAL INGREDIENTS
-            # --------------------------
-            additional = []
-
-            for ri in recipe_ingredients:
-                if not any(self.is_match(ri, ui) for ui in user_ingredients):
-                    additional.append(ri)
+            additional = [
+                ri for ri in recipe_ingredients
+                if not any(self.is_match(ri, ui) for ui in user_ingredients)
+            ]
 
             additional = sorted(set(additional))
 
-            # --------------------------
-            # COVERAGE SCORE
-            # --------------------------
             coverage = round(
                 len(matched) / len(user_ingredients) * 100
             ) if user_ingredients else 0
 
-            score = coverage + (20 if len(matched) >= 2 else 0)
+            score = coverage + (len(matched) * 5)
 
             results.append({
                 "score": score,
@@ -230,22 +188,10 @@ class RecipeAgent:
 
         return sorted(results, key=lambda x: x["score"], reverse=True)
 
-    # ---------------------------------------------------------
-    # EXTRACTION FROM MEALDB
-    # ---------------------------------------------------------
+    # -----------------------------
+    # EXTRACT
+    # -----------------------------
     def extract(self, meal):
-        """
-        Extract structured ingredients from MealDB API.
-
-        RETURNS:
-        --------
-        [
-            {
-                "ingredient": str,
-                "measure": str
-            }
-        ]
-        """
 
         items = []
 
@@ -261,16 +207,20 @@ class RecipeAgent:
 
         return items
 
-    # ---------------------------------------------------------
-    # EXPLANATION ENGINE
-    # ---------------------------------------------------------
-    def explain(self, strategy, recipe):
-        """
-        Generates human-readable explanation.
-        """
+    # -----------------------------
+    # EXPLAIN
+    # -----------------------------
+    def explain(self, strategy, recipe, diet_pref=None):
+
+        diet_line = (
+            f"Diet preference: {diet_pref}\n"
+            if diet_pref and diet_pref != "none"
+            else ""
+        )
 
         return (
-            f"⭐ Recommended for {strategy}\n\n"
+            f"⭐ Recommended for {strategy}\n"
+            f"{diet_line}"
             f"Match: {recipe['coverage']}%\n"
             f"Uses: {', '.join(recipe['matched']) if recipe['matched'] else 'None'}\n"
             f"Missing: {', '.join(recipe['missing']) if recipe['missing'] else 'None'}"

@@ -81,8 +81,30 @@ ingredients = st.text_area("🥕 Ingredients (comma separated)")
 goal = st.selectbox("🎯 Goal", ["Lose Weight", "Maintenance", "Weight Gain"])
 
 st.subheader("🧍 Personal Profile")
-weight_input = st.text_input("Weight (kg)", "70")
+weight_input = st.text_input("Weight (kg)","70")
+
 height_input = st.text_input("Height (cm)", "170")
+
+age_input = st.text_input("Age","30")
+
+sex = st.selectbox(
+    "Sex",
+    [
+        "Male",
+        "Female"
+    ]
+)
+
+activity_level = st.selectbox(
+    "Activity Level",
+    [
+        "Sedentary",
+        "Light",
+        "Moderate",
+        "Active",
+        "Very Active"
+    ]
+)
 
 diet_pref = st.selectbox(
     "🥗 Dietary Preference",
@@ -102,6 +124,7 @@ if st.button("✨ Generate Meal Plan"):
     try:
         weight = float(weight_input)
         height = float(height_input)
+        age = int(age_input)
     except:
         st.error("Weight and height must be numeric.")
         st.stop()
@@ -124,6 +147,9 @@ if st.button("✨ Generate Meal Plan"):
         goal,
         weight,
         height,
+        age,
+        sex,
+        activity_level,
         diet_pref
     )
 

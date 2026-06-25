@@ -15,6 +15,9 @@ def test_full_agent_pipeline():
         "Weight Gain",
         70,
         170,
+        25,
+        "Male",
+        "Moderate",
         "High Protein"
     )
 
