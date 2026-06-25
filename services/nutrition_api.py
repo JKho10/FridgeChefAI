@@ -8,24 +8,12 @@ load_dotenv()
 
 class NutritionAPI:
     """
-    USDA Nutrition API wrapper with judge-proof disambiguation.
+    Stable USDA Nutrition Mapper
 
-    KEY IMPROVEMENT:
-    ----------------
-    Instead of blindly selecting the first USDA result,
-    this version ranks candidate foods using a scoring system
-    that prioritizes semantic match quality and raw ingredient relevance.
-
-    WHY THIS MATTERS:
-    ------------------
-    USDA search results are noisy and often include:
-    - processed foods (fried, canned, baked goods)
-    - composite dishes (soups, meals)
-    - ingredient derivatives (flour, oils, extracts)
-
-    This layer ensures we map:
-        "chicken" → chicken breast (raw)
-        not → chicken nuggets / soup / fried chicken
+    FIXES:
+    - avoids junk food selections
+    - prefers raw single-ingredient foods
+    - improves nutrient extraction reliability
     """
 
     BASE_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
@@ -35,115 +23,62 @@ class NutritionAPI:
         if not self.api_key:
             raise ValueError("Missing USDA_API_KEY")
 
-    # --------------------------------------------------
-    # CLEAN QUERY
-    # --------------------------------------------------
     def clean(self, text: str) -> str:
         text = text.lower()
         text = re.sub(r"\d+", "", text)
         text = re.sub(
-            r"\b(tbsp|tsp|g|kg|ml|oz|cup|cups|clove|cloves|pinch|slice|sliced|chopped|large|small|fresh)\b",
+            r"\b(tbsp|tsp|g|kg|ml|oz|cup|cups|chopped|sliced|large|small|fresh)\b",
             "",
             text
         )
         text = re.sub(r"[^a-z ]", " ", text)
         return re.sub(r"\s+", " ", text).strip()
 
-    # --------------------------------------------------
-    # NUTRIENT EXTRACTION
-    # --------------------------------------------------
     def extract(self, food: dict) -> dict:
-        nutrients = {
-            "calories": 0,
-            "protein": 0,
-            "carbs": 0,
-            "fat": 0
-        }
+        out = {"calories": 0, "protein": 0, "carbs": 0, "fat": 0}
 
         for n in food.get("foodNutrients", []):
             name = n.get("nutrientName", "").lower()
             val = n.get("value", 0)
 
-            if "energy" in name and "kcal" in name:
-                nutrients["calories"] = val
-            elif name == "energy":
-                nutrients["calories"] = val
+            if "energy" in name:
+                out["calories"] = val
             elif "protein" in name:
-                nutrients["protein"] = val
+                out["protein"] = val
             elif "carbohydrate" in name:
-                nutrients["carbs"] = val
-            elif "fat" in name:
-                nutrients["fat"] = val
+                out["carbs"] = val
+            elif "fat" in name and "fiber" not in name:
+                out["fat"] = val
 
-        return nutrients
+        return out
 
-    # --------------------------------------------------
-    # CORE FIX: JUDGE-PROOF FOOD SELECTION
-    # --------------------------------------------------
     def pick(self, foods, query: str):
-        """
-        Select the best USDA food entry using scoring.
-
-        SCORING SYSTEM:
-        ----------------
-        +100 → exact match in description
-        +70  → all query tokens present
-        +40  → partial token overlap
-        -50  → processed / unhealthy mismatch keywords
-        +20  → raw ingredient preference
-        """
-
         if not foods:
             return None
 
-        query = query.lower()
-        query_tokens = set(query.split())
+        query_tokens = set(query.lower().split())
 
-        BAD_KEYWORDS = {
-            "fried", "breaded", "baked", "canned",
-            "prepared", "processed", "soup", "stew",
-            "pizza", "sandwich", "cake", "cookie",
-            "fast food"
-        }
+        def score(f):
+            d = f.get("description", "").lower()
+            t = set(d.split())
 
-        def score(food):
-            desc = food.get("description", "").lower()
-            desc_tokens = set(desc.split())
+            s = 0
+            s += len(query_tokens & t) * 30
+            if query_tokens.issubset(t):
+                s += 50
+            if "raw" in d:
+                s += 20
+            if "cooked" in d:
+                s -=40
+            if "prepared" in d:
+                s -=40
+            if "fried" in d or "processed" in d:
+                s -= 50
+            s -= len(t) * 0.2
+            return s
 
-            score = 0
+        return max(foods, key=score)
 
-            # 1. exact match boost
-            if query == desc:
-                score += 100
-
-            # 2. full token overlap
-            if query_tokens.issubset(desc_tokens):
-                score += 70
-
-            # 3. partial overlap
-            overlap = len(query_tokens.intersection(desc_tokens))
-            score += overlap * 20
-
-            # 4. raw food preference
-            if "raw" in desc or "unprepared" in desc:
-                score += 20
-
-            # 5. penalty for processed foods
-            if any(bad in desc for bad in BAD_KEYWORDS):
-                score -= 50
-
-            # 6. prefer shorter, cleaner descriptions
-            score -= len(desc.split()) * 0.5
-
-            return score
-
-        best_food = max(foods, key=score)
-
-        return best_food
-
-    # --------------------------------------------------
-    # MAIN API CALL
-    # --------------------------------------------------
     def get_nutrition_per_100g(self, ingredient: str):
         if not ingredient:
             return None
@@ -167,13 +102,7 @@ class NutritionAPI:
             if not food:
                 return None
 
-            nutrients = self.extract(food)
+            return self.extract(food)
 
-            # safety fallback (prevents zero-calorie collapse)
-            if nutrients["calories"] == 0:
-                nutrients["calories"] = 50
-
-            return nutrients
-
-        except Exception:
+        except:
             return None

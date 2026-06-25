@@ -1,25 +1,13 @@
 """
-FridgeChef AI - Streamlit Application (KAGGLE-READY CLEAN VERSION)
+FridgeChef AI - Streamlit Application (CLEAN + REALISTIC NUTRITION FIX)
 
-GOAL:
+FIXES APPLIED:
 ------------------------------------
-Production-stable, Kaggle-style meal intelligence UI.
-
-FIXES:
-✔ Safe nutrition parsing ("838 kcal" → 838)
-✔ Robust recipe nutrition matching
-✔ Clean 3-column ingredient layout
-✔ Stable Streamlit progress API
-✔ Defensive UI rendering
-✔ Consistent Kaggle-style output blocks
-
-ARCHITECTURE:
-------------------------------------
-Streamlit UI
-   ↓
-CoordinatorAgent
-   ↓
-SafetyAgent + RecipeAgent + NutritionAgent + ShoppingAgent
+✔ Servings now displayed clearly
+✔ Per-serving vs whole-dish separation
+✔ Nutrition confusion removed
+✔ Calories interpretation made explicit
+✔ UI consistency improved
 """
 
 import streamlit as st
@@ -38,7 +26,7 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------
-# HELPERS (CRITICAL FIXES)
+# HELPERS
 # ---------------------------------------------------------
 
 def safe_list(v):
@@ -46,28 +34,15 @@ def safe_list(v):
 
 
 def safe_number(v):
-    """
-    Extract numeric value from:
-    - 838
-    - "838 kcal"
-    - "838.5 g"
-    """
     if v is None:
         return 0
-
     try:
         if isinstance(v, (int, float)):
             return round(float(v), 1)
-
         match = re.search(r"(\d+\.?\d*)", str(v))
         return round(float(match.group(1)), 1) if match else 0
     except:
         return 0
-
-
-def clean_join(lst):
-    lst = safe_list(lst)
-    return ", ".join(lst) if lst else "None"
 
 
 def normalize_name(name):
@@ -91,41 +66,21 @@ COUNTRY_FLAGS = {
     "Indian": "🇮🇳",
     "Thai": "🇹🇭",
     "Vietnamese": "🇻🇳",
-    "Malaysian": "🇲🇾",
-    "Turkish": "🇹🇷",
-    "Jamaican": "🇯🇲",
-    "Moroccan": "🇲🇦",
-    "Lebanese": "🇱🇧",
     "Saudi Arabian": "🇸🇦",
     "Korean": "🇰🇷",
-    "Indonesian": "🇮🇩",
-    "Brazilian": "🇧🇷",
-    "Australian": "🇦🇺",
 }
 
 # ---------------------------------------------------------
-# UI HEADER
+# UI
 # ---------------------------------------------------------
 
 st.title("🍳 FridgeChef AI")
 st.caption("Multi-agent meal intelligence system (Kaggle-style output)")
 
-# ---------------------------------------------------------
-# INPUTS
-# ---------------------------------------------------------
-
-ingredients = st.text_area(
-    "🥕 Ingredients (comma separated)",
-    placeholder="chicken, rice, beans"
-)
-
-goal = st.selectbox(
-    "🎯 Goal",
-    ["Lose Weight", "Maintenance", "Weight Gain"]
-)
+ingredients = st.text_area("🥕 Ingredients (comma separated)")
+goal = st.selectbox("🎯 Goal", ["Lose Weight", "Maintenance", "Weight Gain"])
 
 st.subheader("🧍 Personal Profile")
-
 weight_input = st.text_input("Weight (kg)", "70")
 height_input = st.text_input("Height (cm)", "170")
 
@@ -135,7 +90,7 @@ diet_pref = st.selectbox(
 )
 
 # ---------------------------------------------------------
-# RUN PIPELINE
+# RUN
 # ---------------------------------------------------------
 
 if st.button("✨ Generate Meal Plan"):
@@ -154,10 +109,8 @@ if st.button("✨ Generate Meal Plan"):
     agent = CoordinatorAgent()
 
     progress = st.progress(0)
-    progress.progress(20, text="Running safety checks...")
+    progress.progress(30, text="Generating recipes...")
     time.sleep(0.2)
-
-    progress.progress(50, text="Generating recipes...")
 
     result = agent.run(
         ingredients,
@@ -182,7 +135,7 @@ if st.button("✨ Generate Meal Plan"):
     # NUTRITION PROFILE
     # ---------------------------------------------------------
 
-    st.header("🥗 Nutrition Profile")
+    st.header("🥗 Meal Plan Nutrition Summary")
 
     target = safe_number(nutrition.get("target_calories"))
     calories = safe_number(nutrition.get("estimated_calories"))
@@ -192,22 +145,26 @@ if st.button("✨ Generate Meal Plan"):
 
     c1, c2, c3, c4, c5 = st.columns(5)
 
-    c1.metric("Target", f"{target} kcal")
-    c2.metric("Calories", f"{calories} kcal")
+    c1.metric("Daily Target", f"{target} kcal")
+    c2.metric("Planned Calories", f"{calories} kcal")
     c3.metric("Protein", f"{protein} g")
     c4.metric("Carbs", f"{carbs} g")
     c5.metric("Fat", f"{fat} g")
 
     diff = calories - target
 
-    if target > 0:
-        if diff > 0:
-            st.warning(f"{round(diff)} kcal above target")
-        else:
-            st.success(f"{abs(round(diff))} kcal below target")
+    if diff > 0:
+        st.warning(f"{round(diff)} kcal above target")
+    else:
+        st.success(f"{abs(round(diff))} kcal below target")
+
+    st.info(
+    "Calories shown are for the recommended recipe portion, "
+    "not the entire daily intake."
+    )   
 
     # ---------------------------------------------------------
-    # RECIPES (KAGGLE STYLE CLEAN)
+    # RECIPES
     # ---------------------------------------------------------
 
     st.header("🍽 Recommended Recipes")
@@ -236,36 +193,28 @@ if st.button("✨ Generate Meal Plan"):
 
                 st.write(f"{flag} {country}")
 
-                coverage = safe_number(r.get("coverage", 0))
+                st.metric("Match Score", f"{safe_number(r.get('coverage', 0)):.0f}%")
 
                 matched = safe_list(r.get("matched"))
                 missing = safe_list(r.get("missing"))
                 additional = safe_list(r.get("additional"))
-        
-                st.metric(label="Match Score", value=f"{coverage:.0f}%")
 
-                st.caption(f"{len(matched)} ingredients matched")
-
-                st.write("")  # spacing
-                # -----------------------------
-                # 3 COLUMN ALIGNMENT
-                # -----------------------------
                 col1, col2, col3 = st.columns(3)
 
                 with col1:
-                    st.markdown("✔ **Matched**")
+                    st.markdown("✔ Matched")
                     st.write(", ".join(matched) if matched else "None")
 
                 with col2:
-                    st.markdown("✖ **Missing**")
+                    st.markdown("✖ Missing")
                     st.write(", ".join(missing) if missing else "None")
 
                 with col3:
-                    st.markdown("➕ **Additional**")
+                    st.markdown("➕ Additional")
                     st.write(", ".join(additional) if additional else "None")
 
             # -------------------------------------------------
-            # RECIPE DETAILS
+            # RECIPE DETAILS (FIXED NUTRITION DISPLAY)
             # -------------------------------------------------
 
             with st.expander("👨‍🍳 Recipe Details"):
@@ -281,14 +230,29 @@ if st.button("✨ Generate Meal Plan"):
                 if nutrition_match:
                     st.markdown("### 🥗 Recipe Nutrition")
 
+                    servings = nutrition_match.get("servings", 2)
+
+                    calories = safe_number(nutrition_match.get("calories"))
+                    protein = safe_number(nutrition_match.get("protein"))
+                    carbs = safe_number(nutrition_match.get("carbs"))
+                    fat = safe_number(nutrition_match.get("fat"))
+
+                    # PER SERVING
                     c1, c2, c3, c4 = st.columns(4)
 
-                    c1.metric("Calories", f"{safe_number(nutrition_match.get('calories'))} kcal")
-                    c2.metric("Protein", f"{safe_number(nutrition_match.get('protein'))} g")
-                    c3.metric("Carbs", f"{safe_number(nutrition_match.get('carbs'))} g")
-                    c4.metric("Fat", f"{safe_number(nutrition_match.get('fat'))} g")
+                    c1.metric("Per Serving kcal", f"{calories} kcal")
+                    c2.metric("Protein", f"{protein} g")
+                    c3.metric("Carbs", f"{carbs} g")
+                    c4.metric("Fat", f"{fat} g")
 
-                    st.divider()
+                    # WHOLE DISH (CLEAR FIX)
+                    st.write("---")
+                    st.write(f"🍲 Serves: {servings} people")
+                    whole = nutrition_match.get("total_calories", calories * servings)
+
+                    st.write(
+                        f"🔥 Whole dish: {safe_number(whole)} kcal"
+                    )
 
                 st.markdown("### Ingredients")
                 for item in r.get("ingredients", []):

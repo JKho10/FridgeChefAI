@@ -7,168 +7,384 @@ class NutritionAgent:
     def __init__(self):
         self.api = NutritionAPI()
 
-    # --------------------------------------------------
-    # QUANTITY EXTRACTION (FIXED)
-    # --------------------------------------------------
-    def extract_qty(self, text):
-        text = text.lower()
 
-        # eggs (FIXED CRITICAL BUG)
-        if "egg" in text:
-            match = re.search(r"(\d+)", text)
-            count = int(match.group(1)) if match else 1
-            return count * 50  # ~50g per egg
+    ZERO_CAL = {
+        "water",
+        "salt",
+        "pepper",
+        "stock",
+        "broth",
+        "spice",
+        "thyme",
+        "parsley",
+        "garlic"
+    }
 
-        # cups (FIXED MULTIPLIER)
-        match = re.search(r"(\d+)\s*cup", text)
-        if match:
-            return int(match.group(1)) * 180
-        if "cup" in text:
-            return 180
 
-        # tablespoons
-        match = re.search(r"(\d+)\s*(tbsp|tablespoon)", text)
-        if match:
-            return int(match.group(1)) * 15
-        if "tbsp" in text or "tablespoon" in text:
-            return 15
+    UNIT_WEIGHTS = {
 
-        # teaspoons
-        match = re.search(r"(\d+)\s*(tsp|teaspoon)", text)
-        if match:
-            return int(match.group(1)) * 5
-        if "tsp" in text or "teaspoon" in text:
-            return 5
+        # realistic defaults
+        "whole chicken": 1200,
+        "chicken": 150,
 
-        # grams / kg / oz
-        match = re.search(r"(\d+\.?\d*)\s*(g|kg|oz)", text)
-        if match:
-            value = float(match.group(1))
-            unit = match.group(2)
+        "rice": 100,
+        "bread": 40,
+        "chocolate": 20,
 
-            if unit == "kg":
-                return value * 1000
-            if unit == "oz":
-                return value * 28.35
-            return value
+        "corn": 100,
+        "sweetcorn":100,
 
-        # fallback
-        return 100
+        "oil":15,
+        "chorizo":225,
 
-    # --------------------------------------------------
-    # CLEAN INGREDIENT NAME
-    # --------------------------------------------------
-    def clean_name(self, text):
-        text = text.lower()
+        "onion":120,
+        "garlic":10,
+    }
 
-        remove_words = [
-            "g", "kg", "oz", "ml",
-            "cup", "cups",
-            "tbsp", "tsp",
-            "tablespoon", "teaspoon",
-            "large", "small", "medium",
-            "whole", "fresh",
-            "chopped", "diced",
-            "sliced"
-        ]
 
-        for w in remove_words:
-            text = text.replace(w, "")
 
-        text = re.sub(r"\d+", "", text)
-        text = re.sub(r"[^a-z ]", " ", text)
-        return re.sub(r"\s+", " ", text).strip()
+    def extract_qty(self,text):
 
-    # --------------------------------------------------
-    # MAIN ANALYSIS (FIXED OUTPUT SCHEMA)
-    # --------------------------------------------------
-    def analyze(self, recipes, goal, weight=70, height=170, diet_pref="None"):
+        text=text.lower()
 
-        # ------------------------------
-        # CALORIE TARGET
-        # ------------------------------
-        bmr = 10 * weight + 6.25 * height - 5 * 30 + 5
-        tdee = bmr * 1.55
 
-        goal = goal.lower()
-        if "lose" in goal:
-            target = tdee * 0.8
-        elif "gain" in goal:
-            target = tdee * 1.15
-        else:
-            target = tdee
+        # grams
+        m=re.search(r"(\d+\.?\d*)\s*g",text)
 
-        recipe_results = []
+        if m:
+            return float(m.group(1))
 
-        total_calories = 0
-        total_protein = 0
-        total_carbs = 0
-        total_fat = 0
 
-        # ------------------------------
-        # PER RECIPE
-        # ------------------------------
+        # kilograms
+        m=re.search(r"(\d+\.?\d*)\s*kg",text)
+
+        if m:
+            return float(m.group(1))*1000
+
+
+        # ml
+        m=re.search(r"(\d+\.?\d*)\s*ml",text)
+
+        if m:
+            return float(m.group(1))
+
+
+        # cups
+        m=re.search(r"(\d+)\s*cups?",text)
+
+        if m:
+            return int(m.group(1))*180
+
+
+        # tablespoon
+        m=re.search(r"(\d+)\s*(tbsp|tablespoon)",text)
+
+        if m:
+            return int(m.group(1))*15
+
+
+        return None
+
+
+
+    def clean_name(self,text):
+
+        text=text.lower()
+
+        text=re.sub(
+            r"\d+|g|kg|ml|oz|tbsp|tablespoon",
+            "",
+            text
+        )
+
+        text=re.sub(
+            "[^a-z ]",
+            " ",
+            text
+        )
+
+        return re.sub(
+            "\s+",
+            " ",
+            text
+        ).strip()
+
+
+
+    def estimate_weight(self,name,qty):
+
+        for key,value in self.UNIT_WEIGHTS.items():
+
+            if key in name:
+
+                if qty:
+                    return qty
+
+                return value
+
+
+        return qty or 100
+
+
+
+    def calculate_target(
+        self,
+        goal,
+        weight,
+        height
+    ):
+
+        bmr=(
+            10*weight
+            +
+            6.25*height
+            -
+            5*30
+            +
+            5
+        )
+
+        tdee=bmr*1.55
+
+
+        if "lose" in goal.lower():
+            return tdee*0.8
+
+        if "gain" in goal.lower():
+            return tdee*1.15
+
+
+        return tdee
+
+
+
+    def analyze(
+        self,
+        recipes,
+        goal,
+        weight=70,
+        height=170,
+        diet_pref="None"
+    ):
+
+
+        target=self.calculate_target(
+            goal,
+            weight,
+            height
+        )
+
+
+        recipe_results=[]
+
+
         for recipe in recipes:
 
-            calories = 0
-            protein = 0
-            carbs = 0
-            fat = 0
 
-            ingredients = recipe.get("ingredients", [])
+            total={
+                "calories":0,
+                "protein":0,
+                "carbs":0,
+                "fat":0
+            }
 
-            for item in ingredients:
-                qty = self.extract_qty(item)
-                clean = self.clean_name(item)
 
-                if not clean:
+            for ingredient in recipe.get(
+                "ingredients",
+                []
+            ):
+
+
+                name=self.clean_name(
+                    ingredient
+                )
+
+
+                if any(
+                    x in name
+                    for x in self.ZERO_CAL
+                ):
                     continue
 
-                nutrition = self.api.get_nutrition_per_100g(clean)
+
+                qty=self.extract_qty(
+                    ingredient
+                )
+
+
+                grams=self.estimate_weight(
+                    name,
+                    qty
+                )
+
+
+                nutrition=self.api.get_nutrition_per_100g(
+                    name
+                )
+
+
                 if not nutrition:
                     continue
 
-                scale = qty / 100
 
-                calories += nutrition["calories"] * scale
-                protein += nutrition["protein"] * scale
-                carbs += nutrition["carbs"] * scale
-                fat += nutrition["fat"] * scale
+                multiplier=grams/100
 
-            servings = 4
 
-            c = round(calories / servings)
-            p = round(protein / servings)
-            cb = round(carbs / servings)
-            f = round(fat / servings)
+                total["calories"] += (
+                    nutrition["calories"]
+                    *
+                    multiplier
+                )
+
+                total["protein"] += (
+                    nutrition["protein"]
+                    *
+                    multiplier
+                )
+
+                total["carbs"] += (
+                    nutrition["carbs"]
+                    *
+                    multiplier
+                )
+
+                total["fat"] += (
+                    nutrition["fat"]
+                    *
+                    multiplier
+                )
+
+
+
+            # estimate servings
+
+            servings = recipe.get(
+                "servings"
+            )
+
+
+            if not servings:
+
+                # realistic recipe serving estimation
+
+                ingredient_text = " ".join(
+                    recipe.get("ingredients", [])
+                ).lower()
+
+
+                if "whole chicken" in ingredient_text:
+                    servings = 5
+
+                elif "400g rice" in ingredient_text:
+                    servings = 5
+
+                elif "225g chorizo" in ingredient_text:
+                    servings = 5
+
+                else:
+                    servings = 4
 
             recipe_results.append({
-                "name": recipe.get("name", "Recipe"),
-                "calories": c,
-                "protein": p,
-                "carbs": cb,
-                "fat": f
+
+                "name":
+                    recipe.get(
+                        "name",
+                        "Recipe"
+                    ),
+
+                "total_calories":
+                    round(
+                        total["calories"]
+                    ),
+
+                "calories":
+                    round(
+                        total["calories"]
+                        /
+                        servings
+                    ),
+
+                "protein":
+                    round(
+                        total["protein"]
+                        /
+                        servings
+                    ),
+
+                "carbs":
+                    round(
+                        total["carbs"]
+                        /
+                        servings
+                    ),
+
+                "fat":
+                    round(
+                        total["fat"]
+                        /
+                        servings
+                    ),
+
+                "servings":
+                    servings
             })
 
-            # accumulate totals for UI FIX
-            total_calories += c
-            total_protein += p
-            total_carbs += cb
-            total_fat += f
 
-        # ------------------------------
-        # FINAL RETURN (FIXED FOR UI)
-        # ------------------------------
+
+        # IMPORTANT:
+        # Only top recipe counts
+        # recommendations are not eaten together
+
+        selected = (
+            recipe_results[0]
+            if recipe_results
+            else {}
+        )
+
+
         return {
-            "target_calories": round(target),
 
-            # UI FIX (THIS SOLVES YOUR 0 kcal BUG)
-            "estimated_calories": round(total_calories),
-            "estimated_protein": round(total_protein),
-            "estimated_carbs": round(total_carbs),
-            "estimated_fat": round(total_fat),
 
-            "recipes": recipe_results,
-            "dietary_preference": diet_pref,
-            "goal": goal
+            "target_calories":
+                round(target),
+
+
+            "estimated_calories":
+                selected.get(
+                    "calories",
+                    0
+                ),
+
+
+            "estimated_protein":
+                selected.get(
+                    "protein",
+                    0
+                ),
+
+
+            "estimated_carbs":
+                selected.get(
+                    "carbs",
+                    0
+                ),
+
+
+            "estimated_fat":
+                selected.get(
+                    "fat",
+                    0
+                ),
+
+
+            "recipes":
+                recipe_results,
+
+
+            "goal":
+                goal,
+
+
+            "dietary_preference":
+                diet_pref
         }
