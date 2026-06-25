@@ -135,13 +135,33 @@ if st.button("✨ Generate Meal Plan"):
     # NUTRITION PROFILE
     # ---------------------------------------------------------
 
+    # ---------------------------------------------------------
+# NUTRITION PROFILE (FIXED LOGIC)
+# ---------------------------------------------------------
+
     st.header("🥗 Meal Plan Nutrition Summary")
 
+    st.info(
+    "Planned calories are based only on the top recommended recipe (1 serving). "
+    "They are not the total calories for all suggested recipes or a full-day plan."
+    )
+
     target = safe_number(nutrition.get("target_calories"))
-    calories = safe_number(nutrition.get("estimated_calories"))
-    protein = safe_number(nutrition.get("estimated_protein"))
-    carbs = safe_number(nutrition.get("estimated_carbs"))
-    fat = safe_number(nutrition.get("estimated_fat"))
+
+    recipes_list = nutrition.get("recipes", [])
+    selected = recipes_list[0] if recipes_list else None
+
+    if selected:
+        calories = safe_number(selected.get("calories"))
+        protein = safe_number(selected.get("protein"))
+        carbs = safe_number(selected.get("carbs"))
+        fat = safe_number(selected.get("fat"))
+
+    else:
+        calories = safe_number(nutrition.get("estimated_calories"))
+        protein = safe_number(nutrition.get("estimated_protein"))
+        carbs = safe_number(nutrition.get("estimated_carbs"))
+        fat = safe_number(nutrition.get("estimated_fat"))
 
     c1, c2, c3, c4, c5 = st.columns(5)
 
@@ -157,11 +177,6 @@ if st.button("✨ Generate Meal Plan"):
         st.warning(f"{round(diff)} kcal above target")
     else:
         st.success(f"{abs(round(diff))} kcal below target")
-
-    st.info(
-    "Calories shown are for the recommended recipe portion, "
-    "not the entire daily intake."
-    )   
 
     # ---------------------------------------------------------
     # RECIPES
@@ -248,12 +263,7 @@ if st.button("✨ Generate Meal Plan"):
                     # WHOLE DISH (CLEAR FIX)
                     st.write("---")
                     st.write(f"🍲 Serves: {servings} people")
-                    whole = nutrition_match.get("total_calories", calories * servings)
-
-                    st.write(
-                        f"🔥 Whole dish: {safe_number(whole)} kcal"
-                    )
-
+                    
                 st.markdown("### Ingredients")
                 for item in r.get("ingredients", []):
                     st.write(f"- {item}")

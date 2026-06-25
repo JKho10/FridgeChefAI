@@ -1,3 +1,11 @@
+"""
+NutritionAPI (USDA mapper)
+
+GOAL:
+- Prefer raw foods
+- Avoid processed junk bias
+"""
+
 import os
 import re
 import requests
@@ -7,14 +15,6 @@ load_dotenv()
 
 
 class NutritionAPI:
-    """
-    Stable USDA Nutrition Mapper
-
-    FIXES:
-    - avoids junk food selections
-    - prefers raw single-ingredient foods
-    - improves nutrient extraction reliability
-    """
 
     BASE_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
 
@@ -23,18 +23,14 @@ class NutritionAPI:
         if not self.api_key:
             raise ValueError("Missing USDA_API_KEY")
 
-    def clean(self, text: str) -> str:
+    def clean(self, text):
         text = text.lower()
         text = re.sub(r"\d+", "", text)
-        text = re.sub(
-            r"\b(tbsp|tsp|g|kg|ml|oz|cup|cups|chopped|sliced|large|small|fresh)\b",
-            "",
-            text
-        )
+        text = re.sub(r"\b(cooked|fried|prepared|chopped|raw)\b", "", text)
         text = re.sub(r"[^a-z ]", " ", text)
         return re.sub(r"\s+", " ", text).strip()
 
-    def extract(self, food: dict) -> dict:
+    def extract(self, food):
         out = {"calories": 0, "protein": 0, "carbs": 0, "fat": 0}
 
         for n in food.get("foodNutrients", []):
@@ -52,34 +48,26 @@ class NutritionAPI:
 
         return out
 
-    def pick(self, foods, query: str):
+    def pick(self, foods, query):
         if not foods:
             return None
 
-        query_tokens = set(query.lower().split())
+        query_tokens = set(query.split())
 
         def score(f):
             d = f.get("description", "").lower()
             t = set(d.split())
 
-            s = 0
-            s += len(query_tokens & t) * 30
-            if query_tokens.issubset(t):
-                s += 50
+            s = len(query_tokens & t) * 30
             if "raw" in d:
                 s += 20
-            if "cooked" in d:
-                s -=40
-            if "prepared" in d:
-                s -=40
-            if "fried" in d or "processed" in d:
+            if "fried" in d:
                 s -= 50
-            s -= len(t) * 0.2
             return s
 
         return max(foods, key=score)
 
-    def get_nutrition_per_100g(self, ingredient: str):
+    def get_nutrition_per_100g(self, ingredient):
         if not ingredient:
             return None
 
@@ -90,7 +78,7 @@ class NutritionAPI:
                 self.BASE_URL,
                 params={
                     "query": cleaned,
-                    "pageSize": 8,
+                    "pageSize": 5,
                     "api_key": self.api_key
                 },
                 timeout=10
