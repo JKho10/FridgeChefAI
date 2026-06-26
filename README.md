@@ -1,200 +1,185 @@
-# FridgeChef AI — Multi-Agent Meal Intelligence System
+# FridgeChef AI — Multi-Agent Meal Planning System
 
 ## Overview
 
-FridgeChef AI is a **multi-agent meal planning system** that transforms available fridge ingredients into structured, goal-aware meal recommendations.
+FridgeChef AI is a rule-based multi-agent meal planning application that generates recipe suggestions, nutrition estimates, and grocery lists based on user-provided ingredients and dietary goals.
 
-Given simple inputs such as ingredients and a fitness goal, the system generates:
-
-* ranked recipe suggestions
-* nutrition estimates (calories and protein)
-* a consolidated grocery list
-* explainable reasoning traces
-
-The system demonstrates how **agent-based decomposition + tool abstraction + iterative evaluation** can improve structured decision-making compared to a single-model approach.
+The system is designed as a modular pipeline where each component is responsible for a specific step in the meal planning process, enabling separation of concerns and easier maintenance.
 
 ---
 
 ## Problem Statement
 
-Meal planning is a frequent real-world challenge where users struggle with:
+Meal planning is often difficult when users:
 
-* deciding what to cook using limited or random ingredients
-* aligning meals with fitness or dietary goals
-* reducing food waste through better ingredient usage
-* creating complete grocery lists without missing items
+- Have limited or random ingredients available
+- Want meals aligned with fitness goals (e.g. weight loss or muscle gain)
+- Need structured grocery lists
+- Lack clear nutritional breakdowns of meals
 
-Most existing recipe tools are:
-
-* static (no goal awareness)
-* non-adaptive to user constraints
-* limited in reasoning across multiple objectives (taste, nutrition, availability)
-
-FridgeChef AI addresses this by introducing a **multi-agent system that decomposes meal planning into specialized reasoning components**.
+Most existing recipe tools are static and do not combine ingredient availability with goal-based planning in a structured workflow.
 
 ---
 
 ## Solution Overview
 
-FridgeChef AI uses a **coordinated multi-agent architecture** where each agent is responsible for a specific reasoning task:
+FridgeChef AI addresses this by breaking the problem into multiple specialized components:
 
-* **Coordinator Agent** → Orchestrates workflow, selects strategy, and manages iterative improvement
-* **Recipe Agent** → Retrieves and ranks recipes using a tool abstraction layer (MCP-style server)
-* **Nutrition Agent** → Estimates calories, protein, and metabolic targets using rule-based modeling
-* **Shopping Agent** → Consolidates ingredients into a unified grocery list
-* **Safety Agent** → Performs pre-processing safety checks on user input
+- Recipe retrieval and ranking
+- Nutrition estimation
+- Grocery list generation
+- Safety validation
+- Central orchestration layer
 
-This decomposition improves:
-
-* modularity
-* interpretability
-* testability
-* extensibility
+Each component is implemented as a dedicated agent in a structured pipeline.
 
 ---
 
 ## System Architecture
 
 ```
-User (Streamlit UI)
-        ↓
-Safety Agent (Input validation)
-        ↓
-Coordinator Agent (Orchestration + strategy selection + retry logic)
-        ↓
-MCP Tool Layer (Meal API abstraction)
-        ↓
-Recipe Agent (retrieval + ranking)
-        ↓
-Nutrition Agent (macro estimation)
-        ↓
-Shopping Agent (grocery synthesis)
-        ↓
-Final Response + Execution Trace
-```
 
-### Key Design Principle
+User Input (Streamlit UI)
+↓
+SafetyAgent (input validation)
+↓
+CoordinatorAgent (workflow orchestration)
+↓
+MealMCPServer (tool abstraction layer)
+↓
+RecipeAgent (recipe retrieval + ranking via MealDB API)
+↓
+NutritionAgent (macro estimation using USDA API + fallback rules)
+↓
+ShoppingAgent (ingredient consolidation)
+↓
+Final Output (recipes, nutrition, grocery list)
 
-The system enforces a **strict separation between reasoning and external tools**, ensuring:
-
-* agents do not directly call external APIs
-* all external interactions are routed through a controlled tool layer (MCP server abstraction)
+````
 
 ---
 
-## Key Agent System Concepts
+## Agent Design
 
-### 1. Multi-Agent Architecture inspired by ADK principles
+### CoordinatorAgent
+- Orchestrates the full workflow
+- Validates required user inputs
+- Runs safety checks before processing
+- Coordinates execution across all agents
+- Maintains execution trace for debugging and transparency
 
-The system breaks down meal planning into specialized agents rather than relying on a single monolithic model.
+### RecipeAgent
+- Retrieves recipes using the MealDB API via MCP server
+- Ranks recipes based on ingredient overlap and coverage scoring
+- Filters recipes based on dietary preference (e.g. vegetarian mode)
+- Returns ranked recipe candidates with match explanations
 
-Each agent:
+### NutritionAgent
+- Estimates calories and macronutrients per recipe
+- Uses USDA FoodData Central API when available
+- Falls back to deterministic nutrition database when API is unavailable
+- Computes user calorie targets using a basic TDEE model
+- Applies simple cooking and portion adjustments
 
-* owns a distinct responsibility
-* operates independently
-* contributes to a shared final output
+### ShoppingAgent
+- Extracts ingredients from selected recipes
+- Normalizes ingredient formatting
+- Removes duplicates to generate a clean grocery list
 
----
-
-### 2. MCP Tool Abstraction Layer
-
-All external API interactions are handled through `MealMCPServer`.
-
-This design provides:
-
-* controlled access to external data sources
-* clear separation between reasoning logic and data retrieval
-* improved testability and replaceability of APIs
-
-Agents interact with tools such as:
-
-* `search_meals`
-* `get_meal`
-
-without direct API dependency.
-
----
-
-### 3. Evaluation + Retry Loop (Iterative Refinement)
-
-The Coordinator Agent includes a lightweight evaluation loop:
-
-* generate candidate recipes
-* evaluate ingredient coverage quality
-* accept or retry based on threshold heuristics
-
-If results are below quality expectations, the system:
-
-* adjusts strategy
-* retries recipe generation
-
-This introduces **iterative improvement behavior**, improves result quality via heuristic-based retry.
+### SafetyAgent
+- Performs keyword-based safety checks on user input
+- Blocks unsafe or self-harm-related content before processing
+- Prevents unsafe inputs from reaching downstream agents
 
 ---
 
-### 4. Safety Layer
+## MCP Tool Layer
 
-The Safety Agent performs early-stage input validation:
+The `MealMCPServer` provides a controlled abstraction layer over external APIs.
 
-* detects unsafe or self-harm-related input using keyword rules
-* blocks execution before downstream processing
-* ensures safe system boundaries
+It exposes:
 
-This prevents unsafe queries from reaching external tools or downstream agents.
+- `search_meals` — search recipes by ingredient
+- `get_meal` — retrieve full recipe details by ID
+
+This ensures agents do not directly interact with external APIs, improving modularity and testability.
 
 ---
 
-### 5. Agent Skills (Reusable Reasoning Modules)
+## Key System Features
 
-The system includes modular “skills” used across agents:
+### 1. Multi-Agent Pipeline Architecture
+The system decomposes meal planning into specialized components rather than relying on a single monolithic model.
 
-* meal planning strategy selection based on user goals
-* recipe ranking using ingredient coverage heuristics
-* nutrition estimation using simplified metabolic modeling
+---
 
-These skills allow reuse of reasoning logic across the system.
+### 2. Tool Abstraction Layer (MCP-style Design)
+All external API interactions are handled through a centralized server layer, separating logic from data retrieval.
+
+---
+
+### 3. Heuristic-Based Recipe Ranking
+Recipes are ranked using ingredient overlap and coverage scoring to prioritize relevance to user inputs.
+
+---
+
+### 4. Nutrition Estimation Pipeline
+Nutrition values are computed using:
+
+- USDA FoodData Central API (when available)
+- Deterministic fallback nutrition database
+- Basic portion scaling and cooking adjustments
+
+---
+
+### 5. Safety Filtering Layer
+User inputs are validated before processing using a rule-based system that blocks unsafe or harmful content.
+
+---
+
+### 6. Execution Trace Logging
+The CoordinatorAgent records each step of the pipeline execution to improve transparency and debugging.
 
 ---
 
 ## Technical Stack
 
-* Python
-* Streamlit (UI layer)
-* Requests (external API calls)
-* Pytest (testing framework)
-* MealDB API (via MCP abstraction layer)
+- Python
+- Streamlit (UI)
+- Requests (API calls)
+- Pytest (testing framework)
+- MealDB API
+- USDA FoodData Central API
 
 ---
 
-## System Workflow
+## Workflow
 
 1. User enters ingredients and dietary goal
-2. Safety Agent validates input
-3. Coordinator parses ingredients and selects strategy
-4. Recipe Agent retrieves candidate meals via MCP server
-5. Recipes are ranked using ingredient coverage scoring
-6. Evaluation loop refines results if quality is low
-7. Nutrition Agent estimates calories and protein targets
-8. Shopping Agent consolidates ingredients into a grocery list
-9. Streamlit UI renders results + execution trace
+2. SafetyAgent validates input
+3. CoordinatorAgent parses input and selects strategy
+4. RecipeAgent retrieves and ranks recipes via MCP server
+5. NutritionAgent estimates nutritional values
+6. ShoppingAgent generates grocery list
+7. Streamlit UI displays results and trace logs
 
 ---
 
 ## Testing Strategy
 
-The system includes unit and integration tests covering:
+The project includes unit and integration tests covering:
 
-* MCP tool routing
-* recipe generation and ranking
-* nutrition estimation outputs
-* safety filtering behavior
-* full multi-agent pipeline execution
+- MCP tool routing
+- Recipe generation and ranking
+- Nutrition estimation logic
+- Safety filtering behavior
+- Full pipeline execution
 
 Run tests:
 
 ```bash
 pytest
-```
+````
 
 ---
 
@@ -207,77 +192,41 @@ streamlit run app.py
 
 ---
 
-## Safety & Security Design
+## Limitations
 
-* Input validation performed before any agent execution
-* Unsafe queries are blocked early in the pipeline
-* No API keys or credentials are stored in the codebase
-* External API access is isolated through a controlled abstraction layer (MCP server)
+This project is an educational prototype with the following constraints:
 
----
-
-## Deployability
-
-FridgeChef AI is fully deployable as a lightweight **Streamlit web application**.
-
-It requires:
-
-* no database setup
-* no authentication system
-* no external infrastructure beyond MealDB API access
-
-This makes it easy to reproduce, test, and extend.
-
----
-
-## Course Concept Mapping (Evaluation Alignment)
-
-| Concept                        | Implementation                                      |
-| ------------------------------ | --------------------------------------------------- |
-| Multi-Agent System (ADK-style) | CoordinatorAgent orchestrates specialized agents    |
-| MCP Server                     | MealMCPServer abstracts external API access         |
-| Iterative Reasoning            | Evaluation + retry loop in CoordinatorAgent         |
-| Security Features              | SafetyAgent input filtering                         |
-| Deployability                  | Streamlit-based application                         |
-| Agent Skills                   | Strategy selection + ranking + nutrition heuristics |
-
----
-
-## Limitations (Important for Evaluation Transparency)
-
-This system is intentionally lightweight and educational in scope:
-
-* Nutrition model uses simplified rule-based estimation (not clinical-grade)
-* Recipe ranking uses heuristic coverage scoring (not ML-based ranking)
+* Nutrition estimates are simplified and not medical-grade
+* Recipe ranking is based on heuristic scoring rather than machine learning
 * No persistent memory or personalization layer
-* No LLM-based reasoning or fine-tuning
-* External API (MealDB) is limited in recipe diversity and structure
-
-These limitations reflect design choices for clarity, modularity, and educational focus.
+* No advanced autonomous reasoning or LLM-based agents
+* External API coverage depends on MealDB and USDA datasets
 
 ---
 
 ## Future Improvements
 
-* Integration of LLM-based recipe generation and rewriting
-* More advanced nutrition modeling with portion estimation
-* Persistent user profiles for personalization
-* Deployment as API-based service (FastAPI + Docker)
-* Multi-user shared meal planning workflows
-* Enhanced agent memory and feedback learning loop
+* Integrate LLM-based recipe generation and rewriting
+* Improve nutrition accuracy with more precise portion estimation
+* Add user profiles for personalization
+* Extend MCP layer with additional external tools
+* Add feedback-based refinement logic (iterative improvement loop)
+* Deploy as a production API using FastAPI + Docker
 
 ---
 
 ## Summary
 
-FridgeChef AI demonstrates a **modular multi-agent architecture for structured decision-making**, combining:
+FridgeChef AI demonstrates a modular rule-based multi-agent system for structured meal planning.
 
-* agent decomposition
+It emphasizes:
+
+* separation of concerns
 * tool abstraction (MCP layer)
-* iterative evaluation loops
-* safety-aware orchestration
+* heuristic ranking logic
+* maintainable and testable system design
+* transparent execution tracing
 
-The system is designed to show how agent-based systems can be used to solve practical meal planning tasks in a transparent, extensible, and explainable way.
+```
 
 ---
-

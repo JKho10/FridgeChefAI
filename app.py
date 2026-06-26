@@ -3,6 +3,16 @@ import time
 import re
 from agents.coordinator_agent import CoordinatorAgent
 
+"""
+streamlit frontend for fridgechef ai
+
+this module defines the complete user interface for the meal planning system.
+it handles user input collection, data validation, agent execution, and
+visualization of generated recipes, nutrition information, and grocery lists.
+
+the app acts as the orchestration layer between the user and the backend
+multi-agent pipeline (coordinator, recipe, nutrition, shopping, safety).
+"""
 st.set_page_config(
     page_title="FridgeChef AI",
     page_icon="🍳",
@@ -10,9 +20,24 @@ st.set_page_config(
 )
 
 def safe_list(v):
+    """
+    safely returns a list or empty list if input is invalid.
+
+    this prevents runtime errors when backend fields are missing or malformed.
+    """
     return v if isinstance(v, list) else []
 
 def safe_number(v):
+    """
+    extracts and normalizes numeric values from mixed input types.
+
+    supports:
+    - int/float values
+    - numeric strings
+    - strings containing embedded numbers
+
+    returns 0 if parsing fails.
+    """
     try:
         if v is None:
             return 0
@@ -24,6 +49,11 @@ def safe_number(v):
         return 0
 
 def normalize_name(name):
+    """
+    normalizes recipe or ingredient names for comparison.
+
+    this ensures consistent matching between nutrition and recipe outputs.
+    """
     return str(name).strip().lower()
 
 COUNTRY_FLAGS = {

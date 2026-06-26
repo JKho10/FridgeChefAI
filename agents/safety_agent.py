@@ -12,7 +12,6 @@ class SafetyAgent:
     """
 
     def check(self, text):
-
         """
         Performs a rule-based keyword check on user input.
 
