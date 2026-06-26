@@ -62,6 +62,17 @@ class NutritionAgent:
 
         text = str(text).lower()
 
+        text = text.replace("-", " ")
+        text = text.replace("¼", "0.25")
+        text = text.replace("¾", "0.75")
+
+        def frac_to_float(m):
+            whole = float(m.group(1))
+            num, denom = map(float, m.group(2).split("/"))
+            return str(whole + (num / denom))
+
+        text = re.sub(r"(\d+)\s+(\d/\d+)", frac_to_float, text)
+        
         patterns = [
             (r"(\d+\.?\d*)\s*kg", 1000),
             (r"(\d+\.?\d*)\s*g", 1),
@@ -87,16 +98,24 @@ class NutritionAgent:
         """
         name = name.lower()
 
+        # cooked/raw assumptions (important for accuracy)
+        cooked_defaults = {
+            "rice": 180,      # cooked portion baseline
+            "pasta": 140,
+            "chicken": 165,   # raw edible portion estimate
+            "beef": 170,
+        }
+
+        for k, v in cooked_defaults.items():
+            if k in name:
+                return v
+
         base = {
             "carrot": 80,
             "onion": 110,
             "garlic": 5,
             "tomato": 120,
             "potato": 150,
-            "chicken": 165,
-            "beef": 170,
-            "rice": 180,
-            "pasta": 140,
             "egg": 50,
             "oil": 15,
             "butter": 14,
