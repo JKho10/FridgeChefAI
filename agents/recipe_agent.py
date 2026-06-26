@@ -12,6 +12,19 @@ class RecipeAgent:
         """
         self.mcp = MealMCPServer()
 
+    def estimate_servings(self, recipe):
+        """
+        simple heuristic to estimate servings based on recipe size
+        deterministic and lightweight (no external dependencies)
+        """
+        ingredient_count = len(recipe.get("ingredients", []))
+
+        if ingredient_count < 6:
+            return 2
+        if ingredient_count < 12:
+            return 3
+        return 4
+
     # Normalization
     def normalize(self, text) -> str:
         """
@@ -155,7 +168,7 @@ class RecipeAgent:
 
             coverage = round(len(matched) / len(user_ingredients) * 100) if user_ingredients else 0
 
-            score = coverage + (len(matched) * 5)
+            score = (coverage * 2) + (len(matched) * 3)
 
             results.append({
                 "score": score,
@@ -175,7 +188,7 @@ class RecipeAgent:
                 "missing": missing,
                 "additional": additional,
                 "country": recipe.get("strArea", "Unknown"),
-                "servings": 4
+                "servings": self.estimate_servings(recipe)
             })
 
         return sorted(results, key=lambda x: x["score"], reverse=True)

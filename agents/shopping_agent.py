@@ -1,52 +1,41 @@
 import re
+
 class ShoppingAgent:
     """
-    Generates a consolidated grocery list from selected recipes.
-
-    This agent collects ingredients from multiple recipes,
-    normalizes them, and removes duplicates to produce a clean shopping list.
+    Generates a clean, deduplicated grocery list.
+    Fully normalized to prevent duplicates.
     """
 
+    def normalize(self, text: str) -> str:
+        text = str(text).lower().strip()
+        text = re.sub(r"\d+", "", text)
+        text = re.sub(r"[^a-z ]", " ", text)
+        text = " ".join(text.split())
+        return text
+
     def create_list(self, recipes):
-        """
-        Creates a deduplicated grocery list from recipe ingredients.
-
-        This method:
-        - extracts ingredients from recipe objects
-        - supports both dict and string ingredient formats
-        - normalizes text for consistent comparison
-        - removes duplicates using a normalized key
-        - returns a sorted list of cleaned ingredient strings
-
-        Args:
-            recipes (list): list of recipe dictionaries containing ingredients
-
-        Returns:
-            list: sorted list of unique ingredient strings
-        """
-
         items = []
         seen = set()
 
         for r in recipes:
-            raw_ingredients = r.get("ingredients", [])
+            raw = r.get("ingredients", [])
 
-            for item in raw_ingredients:
+            for item in raw:
 
                 if isinstance(item, dict):
-                    name = item.get("ingredient") or item.get("name") or str(item)
+                    name = item.get("ingredient") or item.get("name") or ""
                     measure = item.get("measure", "")
                     cleaned = f"{measure} {name}".strip()
                 else:
-                    cleaned = str(item).strip()
+                    cleaned = str(item)
 
-                cleaned = cleaned.lower().strip()
+                key = self.normalize(cleaned)
 
-                cleaned_key = re.sub(r"[\d\W]+", " ", cleaned)
-                cleaned_key = " ".join(cleaned_key.split())
+                if not key:
+                    continue
 
-                if cleaned not in seen:
-                    seen.add(cleaned)
-                    items.append(cleaned)
+                if key not in seen:
+                    seen.add(key)
+                    items.append(cleaned.strip())
 
         return sorted(items)
