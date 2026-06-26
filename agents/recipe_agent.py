@@ -1,6 +1,7 @@
 from mcp_server.server import MealMCPServer
 import re
 
+
 class RecipeAgent:
 
     def __init__(self):
@@ -19,6 +20,21 @@ class RecipeAgent:
 
     def is_match(self, user_item: str, recipe_item: str) -> bool:
         return set(self.normalize(user_item).split()) == set(self.normalize(recipe_item).split())
+
+    # -----------------------------
+    # VEGETARIAN CHECK
+    # -----------------------------
+    NON_VEGETARIAN_KEYWORDS = {
+        "chicken", "beef", "pork", "lamb",
+        "fish", "salmon", "tuna", "shrimp", "bacon",
+        "anchovy", "gelatin", "stock", "broth", "fish sauce"
+    }
+
+    def is_vegetarian(self, extracted_ingredients):
+        text = " ".join(
+            i["ingredient"].lower() for i in extracted_ingredients
+        )
+        return not any(x in text for x in self.NON_VEGETARIAN_KEYWORDS)
 
     # -----------------------------
     # GENERATION
@@ -52,17 +68,16 @@ class RecipeAgent:
         if not meal_pool:
             return [], "No recipes found."
 
-        ranked = self.rank_recipes(meal_pool.values(), ingredients)
+        ranked = self.rank_recipes(meal_pool.values(), ingredients, diet_pref)
 
         if not ranked:
             return [], "No valid ranked recipes."
 
         top = ranked[:3]
 
-        # ensure stable structure
         return [
             {
-                "name": r["name"].strip(),   # ✅ FIX: no lowercase name
+                "name": r["name"].strip(),
                 "image": r["image"],
                 "ingredients": r["ingredients"],
                 "instructions": r["instructions"],
@@ -71,7 +86,7 @@ class RecipeAgent:
                 "missing": r["missing"],
                 "additional": r["additional"],
                 "country": r.get("country", "Unknown"),
-                "servings": r.get("servings", 4),  # ✅ FIX: ALWAYS present
+                "servings": r.get("servings", 4),
                 "rank": i + 1,
                 "why": self.explain(strategy, r, diet_pref)
             }
@@ -81,7 +96,7 @@ class RecipeAgent:
     # -----------------------------
     # RANKING
     # -----------------------------
-    def rank_recipes(self, meals, ingredients):
+    def rank_recipes(self, meals, ingredients, diet_pref=None):
 
         results = []
         user_ingredients = sorted(set(self.normalize(i) for i in ingredients))
@@ -98,6 +113,13 @@ class RecipeAgent:
 
             recipe = details["meals"][0]
             extracted = self.extract(recipe)
+
+            # -----------------------------
+            # VEGETARIAN FILTER (FIXED)
+            # -----------------------------
+            if (diet_pref or "").lower() == "vegetarian":
+                if not self.is_vegetarian(extracted):
+                    continue
 
             recipe_ingredients = [
                 self.normalize(i["ingredient"])
@@ -127,7 +149,7 @@ class RecipeAgent:
 
             results.append({
                 "score": score,
-                "name": recipe["strMeal"].strip(),   # ✅ FIX: keep original case
+                "name": recipe["strMeal"].strip(),
                 "image": recipe["strMealThumb"],
                 "ingredients": [
                     {
@@ -143,7 +165,7 @@ class RecipeAgent:
                 "missing": missing,
                 "additional": additional,
                 "country": recipe.get("strArea", "Unknown"),
-                "servings": 4  # ✅ FIX: stable default
+                "servings": 4
             })
 
         return sorted(results, key=lambda x: x["score"], reverse=True)
@@ -169,11 +191,15 @@ class RecipeAgent:
         return items
 
     # -----------------------------
-    # EXPLAIN 
+    # EXPLAIN
     # -----------------------------
     def explain(self, strategy, recipe, diet_pref=None):
 
-        diet_line = f"Diet preference: {diet_pref}\n" if diet_pref and diet_pref != "none" else ""
+        diet_line = (
+            f"Diet preference: {diet_pref}\n"
+            if diet_pref and diet_pref != "none"
+            else ""
+        )
 
         return (
             f"⭐ Recommended for {strategy}\n"
