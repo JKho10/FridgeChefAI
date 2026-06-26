@@ -89,6 +89,18 @@ Final Output (recipes, nutrition, grocery list)
 
 ---
 
+## Example Output
+
+Input:
+chicken, rice, eggs
+
+Output:
+- 3 ranked recipes
+- calorie estimate per meal
+- full grocery list
+
+---
+
 # Project Structure
 
 FridgeChef-AI/
@@ -120,18 +132,6 @@ FridgeChef-AI/
 ├── app.py
 ├── requirements.txt
 └── README.md
-
----
-
-## Example Output
-
-Input:
-chicken, rice, eggs
-
-Output:
-- 3 ranked recipes
-- calorie estimate per meal
-- full grocery list
 
 ---
 
