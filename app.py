@@ -47,7 +47,10 @@ COUNTRY_FLAGS = {
 st.title("🍳 FridgeChef AI")
 st.caption("Multi-agent meal intelligence system (Kaggle-style output)")
 
-ingredients = st.text_area("🥕 Ingredients (comma separated)")
+ingredients = st.text_area(
+    "🥕 Ingredients (comma separated)",
+    placeholder="Example: chicken, rice, broccoli, carrots"
+)
 goal = st.selectbox("🎯 Goal", ["Lose Weight", "Maintenance", "Weight Gain"])
 
 st.subheader("🧍 Personal Profile")
@@ -55,8 +58,19 @@ st.subheader("🧍 Personal Profile")
 weight_unit = st.radio("Weight Unit", ["kg", "lbs"], horizontal=True)
 height_unit = st.radio("Height Unit", ["cm", "inches"], horizontal=True)
 
-weight = float(st.text_input("Weight", "70"))
-height = float(st.text_input("Height", "170"))
+weight_input = st.text_input("Weight", placeholder="Example: 70")
+
+try:
+    weight = float(weight_input)
+except:
+    weight = 0
+
+height_input = st.text_input("Height", placeholder="Example: 170")
+
+try:
+    height = float(height_input)
+except:
+    height = 0
 
 if weight_unit == "lbs":
     weight *= 0.453592
@@ -64,7 +78,12 @@ if weight_unit == "lbs":
 if height_unit == "inches":
     height *= 2.54
 
-age = int(st.text_input("Age", "30"))
+age_input = st.text_input("Age", placeholder="Example: 30")
+
+try:
+    age = int(age_input)
+except:
+    age = 0
 
 sex = st.selectbox("Sex", ["Male", "Female"])
 activity_level = st.selectbox(
@@ -81,6 +100,18 @@ if st.button("✨ Generate Meal Plan"):
 
     if not ingredients.strip():
         st.error("Please enter ingredients.")
+        st.stop()
+
+    if weight <= 0:
+        st.error("Please enter your weight.")
+        st.stop()
+
+    if height <= 0:
+        st.error("Please enter your height.")
+        st.stop()
+
+    if age <= 0:
+        st.error("Please enter your age.")
         st.stop()
 
     agent = CoordinatorAgent()
@@ -148,7 +179,6 @@ if st.button("✨ Generate Meal Plan"):
     c4.metric("Carbs", f"{carbs} g")
     c5.metric("Fat", f"{fat} g")
 
-    # ✅ FIXED: no fake "3 meals per day assumption"
     diff = calories - target
 
     if diff > 0:
