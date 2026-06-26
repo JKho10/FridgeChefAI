@@ -144,7 +144,7 @@ class NutritionAgent:
             "very active": 1.9,
         }
 
-        tdee = bmr * multipliers.get(activity_level.lower(), 1.55)
+        tdee = bmr * multipliers.get(activity_level, 1.55)
 
         if "lose" in goal.lower():
             return tdee * 0.8

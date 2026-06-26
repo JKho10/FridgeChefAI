@@ -93,7 +93,7 @@ class RecipeAgent:
         if not meal_pool:
             return [], "No recipes found."
 
-        ranked = self.rank_recipes(meal_pool.values(), ingredients, diet_pref)
+        ranked = self.rank_recipes(meal_pool.values(), ingredients, diet_pref, strategy)
 
         if not ranked:
             return [], "No valid ranked recipes."
@@ -118,7 +118,7 @@ class RecipeAgent:
         ], "Recipes ranked using ingredient intelligence."
 
     # Ranking
-    def rank_recipes(self, meals, ingredients, diet_pref=None):
+    def rank_recipes(self, meals, ingredients, diet_pref=None, strategy=None):
         """
         rank recipes based on ingredient match score and dietary constraints
         """
@@ -169,6 +169,21 @@ class RecipeAgent:
             coverage = round(len(matched) / len(user_ingredients) * 100) if user_ingredients else 0
 
             score = (coverage * 2) + (len(matched) * 3)
+
+            # --- strategy adjustment ---
+            if strategy == "HIGH_PROTEIN_PRIORITY":
+                # slightly favor recipes with more protein-rich ingredients
+                protein_keywords = {"chicken", "beef", "pork", "fish", "egg"}
+                protein_hits = sum(1 for i in recipe_ingredients if any(p in i for p in protein_keywords))
+                score += protein_hits * 5
+
+            elif strategy == "LOW_CALORIE_PRIORITY":
+                # favor simpler recipes (fewer ingredients usually = lighter meals)
+                score -= len(recipe_ingredients) * 2
+
+            elif strategy == "BALANCED_MEALS":
+                # small stability bonus, no strong bias
+                score += 2
 
             results.append({
                 "score": score,

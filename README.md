@@ -220,7 +220,8 @@ Ranking considers:
 
 - Ingredient overlap
 - Ingredient coverage percentage
-- Dietary constraints
+- Dietary filtering
+- Heuristic strategy-based weighting applied to recipe scoring
 
 ---
 
