@@ -27,7 +27,8 @@ class RecipeAgent:
     NON_VEGETARIAN_KEYWORDS = {
         "chicken", "beef", "pork", "lamb",
         "fish", "salmon", "tuna", "shrimp", "bacon",
-        "anchovy", "gelatin", "stock", "broth", "fish sauce"
+        "anchovy", "gelatin", "stock", "broth", "fish sauce",
+        "salmon", "haddock"
     }
 
     def is_vegetarian(self, extracted_ingredients):

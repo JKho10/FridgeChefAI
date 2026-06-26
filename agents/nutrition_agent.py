@@ -7,9 +7,26 @@ class NutritionAgent:
     def __init__(self):
         self.api = NutritionAPI()
 
-    ZERO_CAL = {
-        "water", "salt", "pepper", "stock", "broth",
-        "spice", "parsley", "thyme", "bay leaf"
+    # -------------------------
+    # FOOD CLASSIFICATION (for realism)
+    # -------------------------
+    FOOD_CLASS = {
+        "oil": "fat_dense",
+        "butter": "fat_dense",
+        "rice": "starch",
+        "pasta": "starch",
+        "potato": "starch",
+        "flour": "starch_dense",
+        "chicken": "protein",
+        "beef": "protein",
+        "pork": "protein",
+        "fish": "protein",
+        "egg": "protein",
+        "milk": "liquid_fat",
+        "coconut milk": "liquid_fat",
+        "onion": "veg_low",
+        "tomato": "veg_low",
+        "carrot": "veg_medium"
     }
 
     # -------------------------
@@ -26,7 +43,7 @@ class NutritionAgent:
             (r"(\d+\.?\d*)\s*cups?", 240),
             (r"(\d+\.?\d*)\s*(tbsp|tablespoons?)", 15),
             (r"(\d+\.?\d*)\s*(tsp|teaspoons?)", 5),
-            (r"(\d+\.?\d*)\s*(lb|lbs|pound|pounds)", 453.592),
+            (r"(\d+\.?\d*)\s*(lb|lbs|pounds?)", 453.592),
             (r"(\d+\.?\d*)\s*(cloves?)", 5),
         ]
 
@@ -51,7 +68,7 @@ class NutritionAgent:
     def estimate_weight(self, name):
         name = name.lower()
 
-        mapping = {
+        base = {
             "carrot": 80,
             "onion": 110,
             "garlic": 5,
@@ -59,17 +76,50 @@ class NutritionAgent:
             "potato": 150,
             "chicken": 165,
             "beef": 170,
-            "rice": 185,
+            "rice": 180,
+            "pasta": 140,
             "egg": 50,
             "oil": 15,
-            "flour": 100
+            "butter": 14,
+            "milk": 240,
+            "flour": 100,
+            "coconut milk": 200
         }
 
-        for k, v in mapping.items():
+        for k, v in base.items():
             if k in name:
                 return v
 
-        return 100
+        return 120
+
+    # -------------------------
+    # REALISTIC COOKING MODIFIER
+    # -------------------------
+    def cooking_modifier(self, recipe_name):
+        name = recipe_name.lower()
+
+        if "fried" in name:
+            return 1.25
+        if "stew" in name:
+            return 1.15
+        if "curry" in name:
+            return 1.20
+        if "grilled" in name:
+            return 0.95
+        if "boiled" in name:
+            return 0.90
+        if "salad" in name:
+            return 0.85
+
+        return 1.0
+
+    # -------------------------
+    # OIL / FAT ABSORPTION MODEL
+    # -------------------------
+    def fat_absorption(self, name, grams, calories):
+        if any(x in name.lower() for x in ["fried", "stew", "curry"]):
+            calories += grams * 0.12  # absorbed oil estimate
+        return calories
 
     # -------------------------
     def calculate_target(self, goal, weight, height, age, sex, activity_level):
@@ -122,36 +172,64 @@ class NutritionAgent:
                     continue
 
                 grams = self.extract_qty(f"{measure} {name}")
-
                 if grams is None:
                     grams = self.estimate_weight(name)
 
                 nutrition = self.api.get_nutrition_per_100g(self.clean_name(name))
 
+                # 🔥 FIX: NEVER skip missing nutrition
                 if not nutrition:
-                    continue
+                    nutrition = {
+                        "calories": 50,
+                        "protein": 1,
+                        "carbs": 2,
+                        "fat": 1
+                    }
 
                 multiplier = grams / 100
 
-                total["calories"] += nutrition["calories"] * multiplier
-                total["protein"] += nutrition["protein"] * multiplier
-                total["carbs"] += nutrition["carbs"] * multiplier
-                total["fat"] += nutrition["fat"] * multiplier
+                cal = nutrition["calories"] * multiplier
+                pro = nutrition["protein"] * multiplier
+                carb = nutrition["carbs"] * multiplier
+                fat = nutrition["fat"] * multiplier
+
+                # 🔥 realism layers
+                cal = self.fat_absorption(name, grams, cal)
+
+                total["calories"] += cal
+                total["protein"] += pro
+                total["carbs"] += carb
+                total["fat"] += fat
 
             # -------------------------
-            # FIXED SERVINGS LOGIC (STABLE)
+            # REALISTIC SERVINGS MODEL
             # -------------------------
-            # based on food weight, not calories
-            ingredient_count = max(len(ingredients), 1)
-            servings = min(6, max(2, ingredient_count // 5))
+            base_calories = max(total["calories"], 1)
+
+            if base_calories < 400:
+                servings = 1
+            elif base_calories < 800:
+                servings = 2
+            elif base_calories < 1400:
+                servings = 3
+            else:
+                servings = 4
+
+            # apply cooking modifier
+            mod = self.cooking_modifier(recipe.get("name", ""))
+
+            total["calories"] *= mod
+            total["protein"] *= mod
+            total["carbs"] *= mod
+            total["fat"] *= mod
 
             results.append({
                 "name": recipe.get("name", "").strip(),
 
-                # total dish (NEVER scaled twice)
+                # TOTAL DISH
                 "total_calories": round(total["calories"]),
 
-                # per serving (safe division only here)
+                # PER SERVING
                 "calories": round(total["calories"] / servings),
                 "protein": round(total["protein"] / servings),
                 "carbs": round(total["carbs"] / servings),

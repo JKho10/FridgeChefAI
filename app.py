@@ -179,7 +179,7 @@ if st.button("✨ Generate Meal Plan"):
     c1, c2, c3, c4, c5 = st.columns(5)
 
     c1.metric("Daily Target", f"{target} kcal")
-    c2.metric("Recommended Meal", f"{calories} kcal")
+    c2.metric("Top Reciple Recommended", f"{calories} kcal")
     c3.metric("Protein", f"{protein} g")
     c4.metric("Carbs", f"{carbs} g")
     c5.metric("Fat", f"{fat} g")
@@ -245,12 +245,18 @@ if st.button("✨ Generate Meal Plan"):
             )
 
             if nutrition_match:
+
                 servings = nutrition_match.get("servings", 2)
 
                 calories = safe_number(nutrition_match.get("calories"))
                 protein = safe_number(nutrition_match.get("protein"))
                 carbs = safe_number(nutrition_match.get("carbs"))
                 fat = safe_number(nutrition_match.get("fat"))
+
+                total_calories = calories * servings
+                total_protein = protein * servings
+                total_carbs = carbs * servings
+                total_fat = fat * servings
 
                 c1, c2, c3, c4 = st.columns(4)
 
@@ -262,18 +268,8 @@ if st.button("✨ Generate Meal Plan"):
                 st.write("---")
                 st.write(f"🍲 Serves: {servings}")
 
-                st.write("🍲 Whole dish totals:")
-                if servings and servings > 0:
-                    total_calories = calories * servings
-                    total_protein = protein * servings
-                    total_carbs = carbs * servings
-                    total_fat = fat * servings
-                else:
-                    total_calories = calories
-                    total_protein = protein
-                    total_carbs = carbs
-                    total_fat = fat
-                
+                st.write("🍲 Estimated meal totals:")
+
                 st.write(f"{total_calories:.0f} kcal")
                 st.write(f"{total_protein:.0f} g protein")
                 st.write(f"{total_carbs:.0f} g carbs")
