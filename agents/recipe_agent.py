@@ -1,16 +1,23 @@
 from mcp_server.server import MealMCPServer
 import re
 
-
 class RecipeAgent:
-
+    """
+    recipe agent
+    handles recipe search, ranking, filtering, and explanation using an external meal mcp server
+    """
     def __init__(self):
+        """
+        initialize meal mcp connection
+        """
         self.mcp = MealMCPServer()
 
-    # -----------------------------
-    # NORMALIZATION
-    # -----------------------------
+    # Normalization
     def normalize(self, text) -> str:
+        """
+        normalize ingredient or recipe text into lowercase clean tokens
+        removes symbols and keeps only alphabetic characters
+        """
         if isinstance(text, dict):
             text = text.get("name") or text.get("ingredient") or str(text)
 
@@ -19,11 +26,12 @@ class RecipeAgent:
         return text.strip()
 
     def is_match(self, user_item: str, recipe_item: str) -> bool:
+        """
+        check if two ingredient strings match based on normalized word sets
+        """
         return set(self.normalize(user_item).split()) == set(self.normalize(recipe_item).split())
 
-    # -----------------------------
-    # VEGETARIAN CHECK
-    # -----------------------------
+    # Vegetarian check
     NON_VEGETARIAN_KEYWORDS = {
         "chicken", "beef", "pork", "lamb",
         "fish", "salmon", "tuna", "shrimp", "bacon",
@@ -32,16 +40,19 @@ class RecipeAgent:
     }
 
     def is_vegetarian(self, extracted_ingredients):
+        """
+        determine if a recipe is vegetarian based on ingredient keywords
+        """
         text = " ".join(
             i["ingredient"].lower() for i in extracted_ingredients
         )
         return not any(x in text for x in self.NON_VEGETARIAN_KEYWORDS)
 
-    # -----------------------------
-    # GENERATION
-    # -----------------------------
+    # Generation
     def generate(self, ingredients, strategy, diet_pref=None):
-
+        """
+        generate ranked recipes based on user ingredients and dietary preferences
+        """
         diet_pref = (diet_pref or "none").strip().lower()
         strategy = (strategy or "").strip()
 
@@ -87,18 +98,17 @@ class RecipeAgent:
                 "missing": r["missing"],
                 "additional": r["additional"],
                 "country": r.get("country", "Unknown"),
-                "servings": r.get("servings", 4),
                 "rank": i + 1,
                 "why": self.explain(strategy, r, diet_pref)
             }
             for i, r in enumerate(top)
         ], "Recipes ranked using ingredient intelligence."
 
-    # -----------------------------
-    # RANKING
-    # -----------------------------
+    # Ranking
     def rank_recipes(self, meals, ingredients, diet_pref=None):
-
+        """
+        rank recipes based on ingredient match score and dietary constraints
+        """
         results = []
         user_ingredients = sorted(set(self.normalize(i) for i in ingredients))
 
@@ -115,9 +125,8 @@ class RecipeAgent:
             recipe = details["meals"][0]
             extracted = self.extract(recipe)
 
-            # -----------------------------
-            # VEGETARIAN FILTER (FIXED)
-            # -----------------------------
+
+            # Vegetarian filter
             if (diet_pref or "").lower() == "vegetarian":
                 if not self.is_vegetarian(extracted):
                     continue
@@ -171,11 +180,11 @@ class RecipeAgent:
 
         return sorted(results, key=lambda x: x["score"], reverse=True)
 
-    # -----------------------------
-    # EXTRACT
-    # -----------------------------
+    # Extract
     def extract(self, meal):
-
+        """
+        extract ingredient list from meal api response
+        """
         items = []
 
         for i in range(1, 21):
@@ -191,11 +200,11 @@ class RecipeAgent:
 
         return items
 
-    # -----------------------------
-    # EXPLAIN
-    # -----------------------------
+    # Explain
     def explain(self, strategy, recipe, diet_pref=None):
-
+        """
+        generate human readable explanation for why a recipe was selected
+        """
         diet_line = (
             f"Diet preference: {diet_pref}\n"
             if diet_pref and diet_pref != "none"

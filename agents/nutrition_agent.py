@@ -3,34 +3,60 @@ from services.nutrition_api import NutritionAPI
 
 
 class NutritionAgent:
+    """
+    nutrition agent
+    responsible for estimating recipe nutrition values using:
+    1. external nutrition api (preferred)
+    2. deterministic fallback database
+    3. safe default values
+
+    also handles:
+    - ingredient parsing
+    - unit conversion
+    - weight estimation
+    - cooking effect adjustments
+    - serving normalization
+    """
 
     def __init__(self):
         self.api = NutritionAPI()
 
-    # -------------------------
-    # FOOD CLASSIFICATION (for realism)
-    # -------------------------
-    FOOD_CLASS = {
-        "oil": "fat_dense",
-        "butter": "fat_dense",
-        "rice": "starch",
-        "pasta": "starch",
-        "potato": "starch",
-        "flour": "starch_dense",
-        "chicken": "protein",
-        "beef": "protein",
-        "pork": "protein",
-        "fish": "protein",
-        "egg": "protein",
-        "milk": "liquid_fat",
-        "coconut milk": "liquid_fat",
-        "onion": "veg_low",
-        "tomato": "veg_low",
-        "carrot": "veg_medium"
-    }
+        # deterministic fallback database (NO randomness ever)
+        self.FALLBACK_NUTRITION = {
+            "chicken": {"calories": 165, "protein": 31, "carbs": 0, "fat": 3.6},
+            "beef": {"calories": 250, "protein": 26, "carbs": 0, "fat": 17},
+            "pork": {"calories": 242, "protein": 27, "carbs": 0, "fat": 14},
+            "fish": {"calories": 200, "protein": 22, "carbs": 0, "fat": 12},
+            "egg": {"calories": 155, "protein": 13, "carbs": 1.1, "fat": 11},
+            "rice": {"calories": 130, "protein": 2.7, "carbs": 28, "fat": 0.3},
+            "pasta": {"calories": 131, "protein": 5, "carbs": 25, "fat": 1.1},
+            "potato": {"calories": 77, "protein": 2, "carbs": 17, "fat": 0.1},
+            "oil": {"calories": 884, "protein": 0, "carbs": 0, "fat": 100},
+            "butter": {"calories": 717, "protein": 0.9, "carbs": 0.1, "fat": 81},
+            "milk": {"calories": 60, "protein": 3.2, "carbs": 5, "fat": 3.3},
+            "flour": {"calories": 364, "protein": 10, "carbs": 76, "fat": 1},
+            "coconut milk": {"calories": 230, "protein": 2, "carbs": 6, "fat": 24},
+        }
 
-    # -------------------------
+    # Text processing
+    def clean_name(self, text):
+        """
+        normalize ingredient text into clean lowercase keyword form
+        removes numbers, symbols, and extra whitespace
+        """
+        if isinstance(text, dict):
+            text = text.get("name") or text.get("ingredient") or ""
+
+        text = str(text).lower()
+        text = re.sub(r"\d+", "", text)
+        text = re.sub(r"[^a-z ]", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+
     def extract_qty(self, text):
+        """
+        extract ingredient quantity and convert to grams/ml equivalent
+        returns float or None if no match found
+        """
         if not text:
             return None
 
@@ -54,18 +80,11 @@ class NutritionAgent:
 
         return None
 
-    # -------------------------
-    def clean_name(self, text):
-        if isinstance(text, dict):
-            text = text.get("name") or text.get("ingredient") or ""
-
-        text = str(text).lower()
-        text = re.sub(r"\d+", "", text)
-        text = re.sub(r"[^a-z ]", " ", text)
-        return re.sub(r"\s+", " ", text).strip()
-
-    # -------------------------
+    # Weight estimation
     def estimate_weight(self, name):
+        """
+        estimate ingredient weight when no explicit measurement is provided
+        """
         name = name.lower()
 
         base = {
@@ -83,7 +102,7 @@ class NutritionAgent:
             "butter": 14,
             "milk": 240,
             "flour": 100,
-            "coconut milk": 200
+            "coconut milk": 200,
         }
 
         for k, v in base.items():
@@ -92,10 +111,12 @@ class NutritionAgent:
 
         return 120
 
-    # -------------------------
-    # REALISTIC COOKING MODIFIER
-    # -------------------------
+
+    # Cooking effects
     def cooking_modifier(self, recipe_name):
+        """
+        adjust calories based on cooking method
+        """
         name = recipe_name.lower()
 
         if "fried" in name:
@@ -113,17 +134,19 @@ class NutritionAgent:
 
         return 1.0
 
-    # -------------------------
-    # OIL / FAT ABSORPTION MODEL
-    # -------------------------
     def fat_absorption(self, name, grams, calories):
+        """
+        add absorbed cooking fat for certain cooking styles
+        """
         if any(x in name.lower() for x in ["fried", "stew", "curry"]):
-            calories += grams * 0.12  # absorbed oil estimate
+            calories += grams * 0.12
         return calories
 
-    # -------------------------
+    # Target calculation
     def calculate_target(self, goal, weight, height, age, sex, activity_level):
-
+        """
+        calculate daily calorie target using tdee model
+        """
         if sex.lower() == "male":
             bmr = (10 * weight + 6.25 * height - 5 * age + 5)
         else:
@@ -134,7 +157,7 @@ class NutritionAgent:
             "light": 1.375,
             "moderate": 1.55,
             "active": 1.725,
-            "very active": 1.9
+            "very active": 1.9,
         }
 
         tdee = bmr * multipliers.get(activity_level.lower(), 1.55)
@@ -146,54 +169,93 @@ class NutritionAgent:
 
         return tdee
 
-    # -------------------------
-    def analyze(self, recipes, goal, weight, height, age, sex, activity_level, diet_pref="None"):
+    def estimate_servings(self, calories):
+        """
+        estimate number of servings based on total calories
+        """
+        if calories < 400:
+            return 1
+        elif calories < 800:
+            return 2
+        elif calories < 1400:
+            return 3
+        return 4
 
+    # Nutrition lookup
+    def get_nutrition(self, name):
+        """
+        resolve nutrition data using:
+        1. api
+        2. fallback dictionary
+        3. safe default
+        """
+        clean = self.clean_name(name)
+
+        api_result = self.api.get_nutrition_per_100g(clean)
+        if api_result:
+            return api_result
+
+        for key, value in self.FALLBACK_NUTRITION.items():
+            if key in clean:
+                return value
+
+        return {"calories": 60, "protein": 2, "carbs": 5, "fat": 2}
+
+    # main analysis
+    def analyze(
+        self,
+        recipes,
+        goal,
+        weight,
+        height,
+        age,
+        sex,
+        activity_level,
+        diet_pref="None"
+    ):
+        """
+        compute nutrition for a list of recipes
+
+        returns:
+        - per recipe macros
+        - estimated servings
+        - top recipe summary
+        - user calorie target
+        """
         target = self.calculate_target(goal, weight, height, age, sex, activity_level)
 
         results = []
 
         for recipe in recipes:
 
-            total = {"calories": 0, "protein": 0, "carbs": 0, "fat": 0}
+            total = {
+                "calories": 0,
+                "protein": 0,
+                "carbs": 0,
+                "fat": 0
+            }
 
             ingredients = recipe.get("ingredients", [])
 
             for ingredient in ingredients:
 
-                if isinstance(ingredient, dict):
-                    name = ingredient.get("ingredient") or ingredient.get("name") or ""
-                    measure = ingredient.get("measure", "")
-                else:
-                    name = str(ingredient)
-                    measure = ""
+                name = ingredient.get("ingredient") if isinstance(ingredient, dict) else str(ingredient)
+                measure = ingredient.get("measure", "") if isinstance(ingredient, dict) else ""
 
-                if not name.strip():
+                if not name:
                     continue
 
-                grams = self.extract_qty(f"{measure} {name}")
-                if grams is None:
-                    grams = self.estimate_weight(name)
+                grams = self.extract_qty(f"{measure} {name}") or self.estimate_weight(name)
 
-                nutrition = self.api.get_nutrition_per_100g(self.clean_name(name))
+                nutrition = self.get_nutrition(name)
 
-                # 🔥 FIX: NEVER skip missing nutrition
-                if not nutrition:
-                    nutrition = {
-                        "calories": 50,
-                        "protein": 1,
-                        "carbs": 2,
-                        "fat": 1
-                    }
+                factor = grams / 100
 
-                multiplier = grams / 100
+                cal = nutrition["calories"] * factor
+                pro = nutrition["protein"] * factor
+                carb = nutrition["carbs"] * factor
+                fat = nutrition["fat"] * factor
 
-                cal = nutrition["calories"] * multiplier
-                pro = nutrition["protein"] * multiplier
-                carb = nutrition["carbs"] * multiplier
-                fat = nutrition["fat"] * multiplier
-
-                # 🔥 realism layers
                 cal = self.fat_absorption(name, grams, cal)
 
                 total["calories"] += cal
@@ -201,53 +263,28 @@ class NutritionAgent:
                 total["carbs"] += carb
                 total["fat"] += fat
 
-            # -------------------------
-            # REALISTIC SERVINGS MODEL
-            # -------------------------
-            base_calories = max(total["calories"], 1)
+            total["calories"] *= self.cooking_modifier(recipe.get("name", ""))
 
-            if base_calories < 400:
-                servings = 1
-            elif base_calories < 800:
-                servings = 2
-            elif base_calories < 1400:
-                servings = 3
-            else:
-                servings = 4
-
-            # apply cooking modifier
-            mod = self.cooking_modifier(recipe.get("name", ""))
-
-            total["calories"] *= mod
-            total["protein"] *= mod
-            total["carbs"] *= mod
-            total["fat"] *= mod
+            servings = self.estimate_servings(total["calories"])
 
             results.append({
                 "name": recipe.get("name", "").strip(),
-
-                # TOTAL DISH
                 "total_calories": round(total["calories"]),
-
-                # PER SERVING
                 "calories": round(total["calories"] / servings),
                 "protein": round(total["protein"] / servings),
                 "carbs": round(total["carbs"] / servings),
                 "fat": round(total["fat"] / servings),
-
                 "servings": servings
             })
 
-        selected = results[0] if results else {}
+        top = results[0] if results else {}
 
         return {
             "target_calories": round(target),
-
-            "estimated_calories": selected.get("calories", 0),
-            "estimated_protein": selected.get("protein", 0),
-            "estimated_carbs": selected.get("carbs", 0),
-            "estimated_fat": selected.get("fat", 0),
-
+            "estimated_calories": top.get("calories", 0),
+            "estimated_protein": top.get("protein", 0),
+            "estimated_carbs": top.get("carbs", 0),
+            "estimated_fat": top.get("fat", 0),
             "recipes": results,
             "goal": goal,
             "dietary_preference": diet_pref or "none"

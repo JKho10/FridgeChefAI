@@ -17,9 +17,9 @@ class SafetyAgent:
         Performs a rule-based keyword check on user input.
 
         Returns:
-        - SAFE: input can proceed through pipeline
-        - WARNING: potentially concerning content
-        - UNSAFE: execution should be blocked
+        - Safe: input can proceed through pipeline
+        - Warning: potentially concerning content
+        - Unsafe: execution should be blocked
         """
 
         text = text.lower()
