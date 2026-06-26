@@ -255,12 +255,6 @@ if st.button("✨ Generate Meal Plan"):
                 c3.metric("Carbs", f"{carb} g")
                 c4.metric("Fat", f"{fatv} g")
 
-                st.write(f"🍲 Serves: {servings}")
-                st.write(f"{total_cal:.0f} kcal total")
-                st.write(f"{total_pro:.0f} g protein")
-                st.write(f"{total_carb:.0f} g carbs")
-                st.write(f"{total_fat:.0f} g fat")
-
             st.markdown("### Ingredients")
             for item in r.get("ingredients", []):
                 if isinstance(item, dict):
