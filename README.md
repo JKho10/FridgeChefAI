@@ -2,7 +2,7 @@
 
 ## Overview
 
-FridgeChef AI is a rule-based multi-agent system that demonstrates agent orchestration for meal planning workflows.
+FridgeChef AI is a multi-agent meal planning system that demonstrates agent orchestration for meal planning workflows.
 
 The system generates recipe suggestions, estimates nutrition, and creates grocery lists based on user-provided ingredients and dietary goals.
 
@@ -78,6 +78,17 @@ Final Output (recipes, nutrition, grocery list)
 
 ---
 
+## How it works
+
+1. User enters ingredients
+2. Safety filter checks input
+3. RecipeAgent fetches + ranks meals from MealDB
+4. NutritionAgent estimates macros using USDA + fallback rules
+5. ShoppingAgent consolidates ingredients
+6. Coordinator returns structured output
+
+---
+
 # Project Structure
 
 FridgeChef-AI/
@@ -109,6 +120,18 @@ FridgeChef-AI/
 ├── app.py
 ├── requirements.txt
 └── README.md
+
+---
+
+## Example Output
+
+Input:
+chicken, rice, eggs
+
+Output:
+- 3 ranked recipes
+- calorie estimate per meal
+- full grocery list
 
 ---
 
@@ -221,7 +244,7 @@ Ranking considers:
 - Ingredient overlap
 - Ingredient coverage percentage
 - Dietary filtering
-- Heuristic strategy-based weighting applied to recipe scoring
+- Lightweight strategy-based scoring adjustments (high protein, low calorie, balanced meals)
 
 ---
 
@@ -333,7 +356,7 @@ Current protections include:
 
 ---
 
-# Testing Strategy
+## Testing Strategy
 
 The project includes unit and integration tests covering:
 
@@ -351,13 +374,33 @@ pytest
 
 ---
 
-# Installation & Execution
+## Installation & Execution
+
+## Quick Start
+
+1. Clone the repository:
+
+```bash
+git clone https://github.com/yourusername/FridgeChef-AI.git
+cd FridgeChef-AI
+```
+
+### Install dependencies
 
 ```bash
 pip install -r requirements.txt
-streamlit run app.py
 ```
 
+### Run tests
+
+```bash
+pytest
+```
+### Start the Streamlit app:
+
+```bash
+streamlit run app.py
+```
 ---
 
 # Technical Stack
