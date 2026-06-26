@@ -153,7 +153,12 @@ if st.button("✨ Generate Meal Plan"):
 
     st.success("Meal plan generated!")
 
-    st.header("🥗 Meal Plan Nutrition Summary")
+    st.header("🥗 Recommended Meal Nutrition")
+
+    st.info(
+    "ℹ️ Nutrition values shown here are for the top recommended recipe only, "
+    "not a complete daily meal plan."
+)
 
     target = safe_number(nutrition.get("target_calories"))
 
@@ -174,7 +179,7 @@ if st.button("✨ Generate Meal Plan"):
     c1, c2, c3, c4, c5 = st.columns(5)
 
     c1.metric("Daily Target", f"{target} kcal")
-    c2.metric("Planned Calories", f"{calories} kcal")
+    c2.metric("Recommended Meal", f"{calories} kcal")
     c3.metric("Protein", f"{protein} g")
     c4.metric("Carbs", f"{carbs} g")
     c5.metric("Fat", f"{fat} g")
