@@ -1,18 +1,16 @@
 import streamlit as st
-import time
 import re
 from agents.coordinator_agent import CoordinatorAgent
 
-"""
-streamlit frontend for fridgechef ai
+#streamlit frontend for fridgechef ai
 
-this module defines the complete user interface for the meal planning system.
-it handles user input collection, data validation, agent execution, and
-visualization of generated recipes, nutrition information, and grocery lists.
+#This module defines the complete user interface for the meal planning system.
+#It handles user input collection, data validation, agent execution, and
+#visualization of generated recipes, nutrition information, and grocery lists.
 
-the app acts as the orchestration layer between the user and the backend
-multi-agent pipeline (coordinator, recipe, nutrition, shopping, safety).
-"""
+#The app acts as the orchestration layer between the user and the backend
+#multi-agent pipeline (coordinator, recipe, nutrition, shopping, safety).
+
 st.set_page_config(
     page_title="FridgeChef AI",
     page_icon="🍳",
@@ -21,17 +19,15 @@ st.set_page_config(
 
 def safe_list(v):
     """
-    safely returns a list or empty list if input is invalid.
-
-    this prevents runtime errors when backend fields are missing or malformed.
+    Safely returns a list or empty list if input is invalid.
+    This prevents runtime errors when backend fields are missing or malformed.
     """
     return v if isinstance(v, list) else []
 
 def safe_number(v):
     """
-    extracts and normalizes numeric values from mixed input types.
-
-    supports:
+    Extracts and normalizes numeric values from mixed input types.
+    Supports:
     - int/float values
     - numeric strings
     - strings containing embedded numbers
@@ -50,9 +46,8 @@ def safe_number(v):
 
 def normalize_name(name):
     """
-    normalizes recipe or ingredient names for comparison.
-
-    this ensures consistent matching between nutrition and recipe outputs.
+    Normalizes recipe or ingredient names for comparison.
+    This ensures consistent matching between nutrition and recipe outputs.
     """
     return str(name).strip().lower()
 
@@ -72,12 +67,31 @@ COUNTRY_FLAGS = {
     "Vietnamese": "🇻🇳",
     "Saudi Arabian": "🇸🇦",
     "Korean": "🇰🇷",
+    "Jamaican": "🇯🇲"
 }
 
-st.title("🍳 FridgeChef AI")
-st.caption("Multi-agent meal intelligence system")
+with st.sidebar:
+    st.title("FridgeChef AI")
+    st.caption("Multi-agent system overview")
 
-ingredients = st.text_area("🥕 Ingredients (comma separated)")
+    st.write("🧠 Pipeline:")
+    st.write("- Safety filtering")
+    st.write("- Recipe ranking (coverage scoring)")
+    st.write("- Nutrition estimation (TDEE model)")
+    st.write("- Grocery synthesis")
+    st.write("- MCP tool abstraction layer")
+
+    st.divider()
+
+    st.write("⚙️ Design:")
+    st.write("- Rule-based agents")
+    st.write("- Deterministic scoring")
+    st.write("- No LLM dependency")
+
+st.title("🍳 FridgeChef AI")
+st.caption("Multi-agent MCP-based meal planning system with recipe ranking, nutrition estimation, and grocery synthesis")
+
+ingredients = st.text_area("🥕 Ingredients", placeholder="e.g. chicken, rice, eggs, spinach")
 goal = st.selectbox("🎯 Goal", ["Lose Weight", "Maintenance", "Weight Gain"])
 
 st.subheader("🧍 Personal Profile")
@@ -85,9 +99,9 @@ st.subheader("🧍 Personal Profile")
 weight_unit = st.radio("Weight Unit", ["kg", "lbs"], horizontal=True)
 height_unit = st.radio("Height Unit", ["cm", "inches"], horizontal=True)
 
-weight_input = st.text_input("Weight")
-height_input = st.text_input("Height")
-age_input = st.text_input("Age")
+weight_input = st.text_input("Weight", placeholder="e.g. 70 (kg or lbs depending on selection)")
+height_input = st.text_input("Height", placeholder="e.g. 175 (cm or inches)")
+age_input = st.text_input("Age", placeholder="e.g. 25")
 
 weight = float(weight_input) if weight_input else 0
 height = float(height_input) if height_input else 0
@@ -123,20 +137,22 @@ if st.button("✨ Generate Meal Plan"):
     agent = CoordinatorAgent()
 
     progress = st.progress(0, text="Starting...")
-    progress.progress(30, text="Generating recipes...")
 
-    result = agent.run(
-        ingredients,
-        goal,
-        weight,
-        height,
-        age,
-        sex,
-        activity_level,
-        diet_pref
-    )
+    with st.spinner("Running multi-agent pipeline..."):
+        progress.progress(30, text="Generating recipes...")
 
-    progress.progress(100, text="Done!")
+        result = agent.run(
+            ingredients,
+            goal,
+            weight,
+            height,
+            age,
+            sex,
+            activity_level,
+            diet_pref
+        )
+
+        progress.progress(100, text="Done!")
 
     recipes = result.get("recipes", [])
     nutrition = result.get("nutrition", {})
