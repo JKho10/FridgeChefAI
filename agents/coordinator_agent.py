@@ -13,7 +13,17 @@ class CoordinatorAgent:
         self.shopping_agent = ShoppingAgent()
         self.safety_agent = SafetyAgent()
 
-    def run(self, user_input, goal, weight, height, age, sex, activity_level, diet_pref="None"):
+    def run(
+        self,
+        user_input,
+        goal,
+        weight,
+        height,
+        age,
+        sex,
+        activity_level,
+        diet_pref="None"
+    ):
 
         trace = []
 
@@ -67,7 +77,7 @@ class CoordinatorAgent:
         trace.append({"step": "strategy", "strategy": strategy})
 
         # -----------------------------
-        # SINGLE recipe generation (FIXED CORE)
+        # Recipe generation
         # -----------------------------
         recipes, reason = self.recipe_agent.generate(
             ingredients,
@@ -81,7 +91,6 @@ class CoordinatorAgent:
             "reason": reason
         })
 
-        # fallback safety
         if not recipes:
             return {
                 "recipes": [],
@@ -92,13 +101,19 @@ class CoordinatorAgent:
             }
 
         # -----------------------------
-        # FORCE TOP 3 CLEANLY
+        # Top 3 recipes (NO DUPLICATION BUG)
         # -----------------------------
         best_recipes = recipes[:3]
 
-        # if less than 3, safely duplicate
-        while len(best_recipes) < 3:
-            best_recipes.append(best_recipes[len(best_recipes) % len(best_recipes)])
+        # -----------------------------
+        # Normalize servings safely
+        # -----------------------------
+        for r in best_recipes:
+            try:
+                s = int(r.get("servings", 2))
+            except:
+                s = 2
+            r["servings"] = max(1, min(s, 4))
 
         # -----------------------------
         # Nutrition
@@ -123,9 +138,11 @@ class CoordinatorAgent:
         })
 
         # -----------------------------
-        # Shopping
+        # Shopping list + dedupe FIXED
         # -----------------------------
-        shopping = self.shopping_agent.create_list(best_recipes)
+        shopping = self._dedupe_list(
+            self.shopping_agent.create_list(best_recipes)
+        )
 
         trace.append({
             "step": "shopping",
@@ -145,6 +162,9 @@ class CoordinatorAgent:
             "reason": reason
         }
 
+    # -----------------------------
+    # Helpers
+    # -----------------------------
     def _parse(self, text):
         if not text:
             return []
@@ -154,3 +174,15 @@ class CoordinatorAgent:
             for x in text.split(",")
             if x.strip()
         ]
+
+    def _dedupe_list(self, items):
+        seen = set()
+        result = []
+
+        for i in items:
+            key = str(i).strip().lower()
+            if key not in seen:
+                seen.add(key)
+                result.append(i)
+
+        return result

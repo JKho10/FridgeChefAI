@@ -23,11 +23,9 @@ class NutritionAgent:
             (r"(\d+\.?\d*)\s*kg", 1000),
             (r"(\d+\.?\d*)\s*g", 1),
             (r"(\d+\.?\d*)\s*ml", 1),
-
             (r"(\d+\.?\d*)\s*cups?", 240),
             (r"(\d+\.?\d*)\s*(tbsp|tablespoons?)", 15),
             (r"(\d+\.?\d*)\s*(tsp|teaspoons?)", 5),
-
             (r"(\d+\.?\d*)\s*(lb|lbs|pound|pounds)", 453.592),
             (r"(\d+\.?\d*)\s*(cloves?)", 5),
         ]
@@ -109,7 +107,9 @@ class NutritionAgent:
 
             total = {"calories": 0, "protein": 0, "carbs": 0, "fat": 0}
 
-            for ingredient in recipe.get("ingredients", []):
+            ingredients = recipe.get("ingredients", [])
+
+            for ingredient in ingredients:
 
                 if isinstance(ingredient, dict):
                     name = ingredient.get("ingredient") or ingredient.get("name") or ""
@@ -121,7 +121,7 @@ class NutritionAgent:
                 if not name.strip():
                     continue
 
-                grams = self.extract_qty(measure + " " + name)
+                grams = self.extract_qty(f"{measure} {name}")
 
                 if grams is None:
                     grams = self.estimate_weight(name)
@@ -138,21 +138,21 @@ class NutritionAgent:
                 total["carbs"] += nutrition["carbs"] * multiplier
                 total["fat"] += nutrition["fat"] * multiplier
 
-            cals = total["calories"]
-
             # -------------------------
-            # FIXED SERVINGS LOGIC
+            # FIXED SERVINGS LOGIC (STABLE)
             # -------------------------
-            # more stable than thresholds, avoids UI confusion
-            servings = max(2, min(6, round(cals / 700)))
+            # based on food weight, not calories
+            ingredient_count = max(len(ingredients), 1)
+            servings = min(6, max(2, ingredient_count // 5))
 
             results.append({
-                "name": recipe.get("name", "").strip().lower(),
+                "name": recipe.get("name", "").strip(),
 
-                "total_calories": round(cals),
+                # total dish (NEVER scaled twice)
+                "total_calories": round(total["calories"]),
 
-                # per serving
-                "calories": round(cals / servings),
+                # per serving (safe division only here)
+                "calories": round(total["calories"] / servings),
                 "protein": round(total["protein"] / servings),
                 "carbs": round(total["carbs"] / servings),
                 "fat": round(total["fat"] / servings),

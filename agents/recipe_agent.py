@@ -1,7 +1,6 @@
 from mcp_server.server import MealMCPServer
 import re
 
-
 class RecipeAgent:
 
     def __init__(self):
@@ -55,15 +54,15 @@ class RecipeAgent:
 
         ranked = self.rank_recipes(meal_pool.values(), ingredients)
 
-        # IMPORTANT FIX: always guarantee list stability
         if not ranked:
             return [], "No valid ranked recipes."
 
-        filtered = ranked[:3] if len(ranked) >= 3 else ranked
+        top = ranked[:3]
 
+        # ensure stable structure
         return [
             {
-                "name": r["name"],
+                "name": r["name"].strip(),   # ✅ FIX: no lowercase name
                 "image": r["image"],
                 "ingredients": r["ingredients"],
                 "instructions": r["instructions"],
@@ -72,10 +71,11 @@ class RecipeAgent:
                 "missing": r["missing"],
                 "additional": r["additional"],
                 "country": r.get("country", "Unknown"),
+                "servings": r.get("servings", 4),  # ✅ FIX: ALWAYS present
                 "rank": i + 1,
                 "why": self.explain(strategy, r, diet_pref)
             }
-            for i, r in enumerate(filtered)
+            for i, r in enumerate(top)
         ], "Recipes ranked using ingredient intelligence."
 
     # -----------------------------
@@ -88,7 +88,6 @@ class RecipeAgent:
 
         for meal in meals:
 
-            details = None
             try:
                 details = self.mcp.call_tool("get_meal", meal_id=meal["idMeal"])
             except Exception:
@@ -123,16 +122,17 @@ class RecipeAgent:
             ))
 
             coverage = round(len(matched) / len(user_ingredients) * 100) if user_ingredients else 0
+
             score = coverage + (len(matched) * 5)
 
             results.append({
                 "score": score,
-                "name": recipe["strMeal"].strip().lower(),
+                "name": recipe["strMeal"].strip(),   # ✅ FIX: keep original case
                 "image": recipe["strMealThumb"],
                 "ingredients": [
                     {
-                        "name": i["ingredient"].lower(),
-                        "ingredient": i["ingredient"].lower(),
+                        "name": i["ingredient"],
+                        "ingredient": i["ingredient"],
                         "measure": i["measure"]
                     }
                     for i in extracted
@@ -142,7 +142,8 @@ class RecipeAgent:
                 "matched": matched,
                 "missing": missing,
                 "additional": additional,
-                "country": recipe.get("strArea", "Unknown")
+                "country": recipe.get("strArea", "Unknown"),
+                "servings": 4  # ✅ FIX: stable default
             })
 
         return sorted(results, key=lambda x: x["score"], reverse=True)
@@ -160,15 +161,15 @@ class RecipeAgent:
 
             if ingredient and ingredient.strip():
                 items.append({
-                    "ingredient": ingredient.strip().lower(),
-                    "measure": (measure or "").strip().lower(),
+                    "ingredient": ingredient.strip(),
+                    "measure": (measure or "").strip(),
                     "raw": f"{measure} {ingredient}".strip()
                 })
 
         return items
 
     # -----------------------------
-    # EXPLAIN
+    # EXPLAIN 
     # -----------------------------
     def explain(self, strategy, recipe, diet_pref=None):
 
