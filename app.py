@@ -2,14 +2,25 @@ import streamlit as st
 import re
 from agents.coordinator_agent import CoordinatorAgent
 
-#streamlit frontend for fridgechef ai
+#FRIDGECHEF AI - STREAMLIT FRONTEND
 
-#This module defines the complete user interface for the meal planning system.
-#It handles user input collection, data validation, agent execution, and
-#visualization of generated recipes, nutrition information, and grocery lists.
+#This module implements the full user interface for the FridgeChef AI system,
+#a multi-agent meal planning application.
 
-#The app acts as the orchestration layer between the user and the backend
-#multi-agent pipeline (coordinator, recipe, nutrition, shopping, safety).
+#ARCHITECTURE OVERVIEW:
+#    User Input → Streamlit UI → CoordinatorAgent → Multi-Agent Pipeline:
+#       - SafetyAgent (input filtering)
+#       - RecipeAgent (recipe generation + ranking)
+#       - NutritionAgent (calorie + macro estimation)
+#       - ShoppingAgent (grocery list synthesis)
+
+#This frontend acts as the orchestration layer between the user and the backend
+#agent-based system. It is responsible for:
+#    - Collecting structured user input
+#   - Validating and normalizing inputs
+#   - Triggering the coordinator pipeline
+#   - Displaying recipes, nutrition data, and shopping lists
+#   - Visualizing trace/debug information
 
 st.set_page_config(
     page_title="FridgeChef AI",
@@ -17,22 +28,39 @@ st.set_page_config(
     layout="wide"
 )
 
+# Utility functions
 def safe_list(v):
     """
-    Safely returns a list or empty list if input is invalid.
-    This prevents runtime errors when backend fields are missing or malformed.
+    Safely returns a list or an empty list if input is invalid.
+
+    Prevents runtime errors when backend fields are missing,
+    null, or incorrectly formatted.
+
+    Args:
+        v (any): Input value
+
+    Returns:
+        list: Valid list or empty list
     """
     return v if isinstance(v, list) else []
 
 def safe_number(v):
     """
     Extracts and normalizes numeric values from mixed input types.
-    Supports:
-    - int/float values
-    - numeric strings
-    - strings containing embedded numbers
 
-    returns 0 if parsing fails.
+    Supports:
+        - integers
+        - floats
+        - numeric strings
+        - strings containing embedded numbers
+
+    Returns 0 if parsing fails.
+
+    Args:
+        v (any): Input value
+
+    Returns:
+        float: Clean numeric value
     """
     try:
         if v is None:
@@ -46,11 +74,22 @@ def safe_number(v):
 
 def normalize_name(name):
     """
-    Normalizes recipe or ingredient names for comparison.
-    This ensures consistent matching between nutrition and recipe outputs.
+    Normalizes recipe or ingredient names for consistent comparison.
+
+    Ensures matching between:
+        - recipe outputs
+        - nutrition outputs
+        - internal mappings
+
+    Args:
+        name (str): Raw name string
+
+    Returns:
+        str: Normalized lowercase string
     """
     return str(name).strip().lower()
 
+# Country flags map
 COUNTRY_FLAGS = {
     "British": "🇬🇧",
     "American": "🇺🇸",
@@ -70,11 +109,12 @@ COUNTRY_FLAGS = {
     "Jamaican": "🇯🇲"
 }
 
+# Sidebar UI
 with st.sidebar:
     st.title("FridgeChef AI")
     st.caption("Multi-agent system overview")
 
-    st.write("🧠 Pipeline:")
+    st.write("Pipeline:")
     st.write("- Safety filtering")
     st.write("- Recipe ranking (coverage scoring)")
     st.write("- Nutrition estimation (TDEE model)")
@@ -83,14 +123,16 @@ with st.sidebar:
 
     st.divider()
 
-    st.write("⚙️ Design:")
+    st.write("Design:")
     st.write("- Rule-based agents")
     st.write("- Deterministic scoring")
     st.write("- No LLM dependency")
 
+# Main UI
 st.title("🍳 FridgeChef AI")
 st.caption("Multi-agent MCP-based meal planning system with recipe ranking, nutrition estimation, and grocery synthesis")
 
+# User inputs
 ingredients = st.text_area("Ingredients", placeholder="e.g. chicken, rice, eggs, spinach")
 goal = st.selectbox("Goal", ["Lose Weight", "Maintenance", "Weight Gain"])
 
@@ -103,10 +145,12 @@ weight_input = st.text_input("Weight", placeholder="e.g. 70 (kg or lbs depending
 height_input = st.text_input("Height", placeholder="e.g. 175 (cm or inches)")
 age_input = st.text_input("Age", placeholder="e.g. 25")
 
+# Convert inputs safely
 weight = float(weight_input) if weight_input else 0
 height = float(height_input) if height_input else 0
 age = int(age_input) if age_input else 0
 
+# Unit conversions
 if weight_unit == "lbs":
     weight *= 0.453592
 
@@ -124,6 +168,7 @@ diet_pref = st.selectbox(
     ["None", "High Protein", "Low Carb", "Vegetarian"]
 )
 
+# Pipeline execution
 if st.button("✨ Generate Meal Plan"):
 
     if not ingredients.strip():
@@ -134,6 +179,7 @@ if st.button("✨ Generate Meal Plan"):
         st.error("Please complete weight, height, and age.")
         st.stop()
 
+    # Initialize coordinator agent
     agent = CoordinatorAgent()
 
     progress = st.progress(0, text="Starting...")
@@ -154,6 +200,7 @@ if st.button("✨ Generate Meal Plan"):
 
         progress.progress(100, text="Done!")
 
+    # Output processing
     recipes = result.get("recipes", [])
     nutrition = result.get("nutrition", {})
 
@@ -163,6 +210,7 @@ if st.button("✨ Generate Meal Plan"):
 
     st.success("Meal plan generated!")
 
+    # Nutrition display
     st.header("🥗 Recommended Meal Nutrition")
     st.info("Values shown are for the top recipe only.")
 
@@ -182,6 +230,7 @@ if st.button("✨ Generate Meal Plan"):
 
     target = safe_number(nutrition.get("target_calories"))
 
+    # Metrics display
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Daily Target", f"{target} kcal")
     c2.metric("Top Recipe", f"{calories} kcal")
@@ -189,12 +238,14 @@ if st.button("✨ Generate Meal Plan"):
     c4.metric("Carbs", f"{carbs} g")
     c5.metric("Fat", f"{fat} g")
 
+    # Calorie comparison
     diff = calories - target
     if diff > 0:
         st.warning(f"{round(diff)} kcal above target")
     else:
         st.success(f"{abs(round(diff))} kcal below target")
 
+    # Recipe display 
     st.header("🍽 Recommended Recipes")
 
     for idx, r in enumerate(recipes):
@@ -227,6 +278,7 @@ if st.button("✨ Generate Meal Plan"):
                 st.write("➕ Additional")
                 st.write(", ".join(safe_list(r.get("additional"))) or "None")
 
+        # Recipe details 
         with st.expander("👨‍🍳 Recipe Details"):
 
             match = next(
@@ -267,9 +319,11 @@ if st.button("✨ Generate Meal Plan"):
 
         st.divider()
 
-    st.header("🛒 Smart Grocery List")
+    # Shopping list
+    st.header("🛒 Grocery List")
     for item in result.get("shopping_list", []):
         st.write(f"- {item}")
 
+    # Trace list
     with st.expander("🔍 Trace"):
         st.json(result.get("trace", []))

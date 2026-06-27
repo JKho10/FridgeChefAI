@@ -6,19 +6,38 @@ BASE = "https://www.themealdb.com/api/json/v1/1"
 @lru_cache(maxsize=128)
 def search_meals_by_ingredient(ingredient: str):
     """
-    fetch meals that match a given ingredient from the mealdb api.
+    Search meals from TheMealDB API by ingredient.
 
-    this function uses a cached request layer to reduce repeated api calls
-    for the same ingredient.
+    This function queries the MealDB filter endpoint to retrieve
+    meals that contain a specific ingredient.
 
-    args:
-        ingredient (str): ingredient name used to filter meals
+    It uses LRU caching to avoid repeated network calls for
+    identical ingredient queries.
 
-    returns:
-        dict: raw json response from mealdb containing matching meals
+    Args:
+        ingredient (str):
+            Ingredient name used to filter meals
+            (e.g., "chicken", "rice", "tomato").
 
-    raises:
-        requests.HTTPError: if the api request fails
+    Returns:
+        dict:
+            Raw JSON response from TheMealDB API.
+            Example structure:
+                {
+                    "meals": [
+                        {
+                            "idMeal": "...",
+                            "strMeal": "...",
+                            "strMealThumb": "..."
+                        }
+                    ]
+                }
+
+    Raises:
+        requests.HTTPError:
+            If the API request fails (non-2xx response).
+        requests.RequestException:
+            For network-related errors.
     """
     # Build request to mealdb filter endpoint
     response = requests.get(
@@ -36,19 +55,40 @@ def search_meals_by_ingredient(ingredient: str):
 @lru_cache(maxsize=256)
 def get_meal_details(meal_id: str):
     """
-    fetch detailed information for a meal using its mealdb id.
+    Retrieve full meal details from TheMealDB API by meal ID.
 
-    this function retrieves full recipe data including ingredients,
-    instructions, and metadata. results are cached to avoid redundant api calls.
+    This function fetches complete recipe information including:
+        - Ingredients (up to 20 fields)
+        - Measurements
+        - Cooking instructions
+        - Metadata (area, category, tags)
 
-    args:
-        meal_id (str): unique meal identifier from mealdb
+    Results are cached using LRU to minimize redundant API calls.
 
-    returns:
-        dict: raw json response containing full meal details
+    Args:
+        meal_id (str):
+            Unique identifier for a meal (idMeal from search endpoint).
 
-    raises:
-        requests.HTTPError: if the api request fails
+    Returns:
+        dict:
+            Raw JSON response from TheMealDB API.
+            Example:
+                {
+                    "meals": [
+                        {
+                            "strMeal": "...",
+                            "strInstructions": "...",
+                            "strIngredient1": "...",
+                            ...
+                        }
+                    ]
+                }
+
+    Raises:
+        requests.HTTPError:
+            If the API request fails (non-2xx response).
+        requests.RequestException:
+            For network-related or timeout errors.
     """
     # Build request to meal lookup endpoint
     response = requests.get(

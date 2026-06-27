@@ -1,22 +1,35 @@
 def meal_planning_skill(ingredients, goal):
     """
-    selects a meal planning strategy based on the user's goal.
+    Determine meal planning strategy based on user fitness or dietary goal.
 
-    this function determines how recipes should be prioritized by the system
-    depending on whether the user wants to lose weight, gain weight, or maintain
-    a balanced diet.
+    This function maps a high-level user goal into a structured strategy
+    label that downstream systems (e.g., RecipeAgent ranking) use to
+    prioritize recipe selection.
 
-    args:
-        ingredients (list): list of user-provided ingredients (not used directly in logic)
-        goal (str): user's dietary goal (e.g., lose weight, gain weight, maintenance)
+    Note:
+        The `ingredients` parameter is currently unused but kept for
+        interface consistency with other pipeline components.
 
-    returns:
-        str: strategy label used by downstream recipe ranking system
+    Strategy mapping:
+        - HIGH_PROTEIN_PRIORITY:
+            Focus on protein-dense meals for muscle gain
 
-    possible returns:
-        - high_protein_priority: prioritize protein-dense meals for muscle gain
-        - low_calorie_priority: prioritize lower-calorie meals for weight loss
-        - balanced_meals: default neutral strategy for maintenance
+        - LOW_CALORIE_PRIORITY:
+            Favor lower-calorie meals for weight loss
+
+        - BALANCED_MEALS:
+            Default neutral strategy for maintenance or unspecified goals
+
+    Args:
+        ingredients (list):
+            List of user-provided ingredients (not used in current logic)
+
+        goal (str):
+            User's dietary or fitness goal (e.g., "lose weight", "gain muscle")
+
+    Returns:
+        str:
+            Strategy label used by downstream recipe ranking system
     """
     goal = goal.lower()
 

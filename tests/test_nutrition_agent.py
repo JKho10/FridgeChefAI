@@ -2,17 +2,21 @@ from agents.nutrition_agent import NutritionAgent
 
 def test_nutrition_calculation():
     """
-    Tests that nutrition estimates are correctly generated from recipe input.
+    Unit test for NutritionAgent nutrition estimation pipeline.
 
-    This unit test validates that:
-    - Calories are calculated and greater than zero
-    - Protein values are generated
-    - Target calorie calculation is functional
+    This test validates that the NutritionAgent.analyze() method correctly
+    processes a synthetic recipe input and produces meaningful nutrition output.
 
-    It uses a minimal synthetic recipe input to ensure the nutrition pipeline
-    does not fail and returns meaningful numeric output.
+    It ensures:
+        - Estimated calories are computed and greater than zero
+        - Estimated protein values are computed and greater than zero
+        - Target daily calorie calculation is functional and valid
+
+    Scope:
+        - Tests end-to-end nutrition calculation logic
+        - Does NOT validate USDA API accuracy
+        - Does NOT validate ingredient parsing correctness in edge cases
     """
-
     agent = NutritionAgent()
 
     # Sample recipe input with simple ingredients
@@ -42,13 +46,19 @@ def test_nutrition_calculation():
 
 def test_female_calorie_target():
     """
-    Ensures that calorie targets are lower for female users
-    compared to male users with identical inputs.
+    Unit test for gender-based calorie target calculation logic.
 
-    This validates the correctness of the bmr adjustment logic
-    inside the target calorie calculation function.
+    This test ensures that the BMR-based calorie estimation correctly
+    differentiates between male and female metabolic calculations.
+
+    It validates:
+        - Both male and female calorie targets are computed
+        - Female calorie target is lower than male for identical inputs
+
+    Scope:
+        - Tests BMR formula correctness
+        - Does NOT validate activity level multipliers independently
     """
-
     agent = NutritionAgent()
 
     male_target = agent.calculate_target(

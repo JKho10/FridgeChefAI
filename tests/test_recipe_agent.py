@@ -2,20 +2,27 @@ from agents.recipe_agent import RecipeAgent
 
 def test_recipe_generation():
     """
-    Tests that recipe generation returns a valid ranked list of recipes.
+    End-to-end unit test for recipe generation.
 
-    This unit test ensures that:
-    - the recipe agent returns a list structure
-    - at least one recipe is generated for valid ingredients
-    - each recipe contains required fields such as name and instructions
+    This test validates the core behavior of the RecipeAgent.generate() method,
+    ensuring that valid ingredient inputs produce usable recipe outputs.
 
-    It validates basic functional correctness of the recipe generation pipeline
-    without depending on external api accuracy.
+    It verifies:
+        - The output is a list of recipes
+        - At least one recipe is generated for valid inputs
+        - Each recipe contains required fields for downstream usage:
+            - name (recipe title)
+            - instructions (cooking steps)
+
+    Scope:
+        - Tests functional correctness of recipe generation logic
+        - Does NOT validate external MCP API correctness
+        - Does NOT validate ranking accuracy or scoring quality
     """
 
     agent = RecipeAgent()
 
-    # Sample ingredient input
+    # Provide sample valid ingredients for recipe generation
     recipes, reason = agent.generate(
         [
             "chicken",
@@ -24,7 +31,7 @@ def test_recipe_generation():
         "HIGH_PROTEIN_PRIORITY"
     )
 
-    # Validate output structure
+    # Validate output type and minimal structure integrity
     assert isinstance(recipes, list)
     assert len(recipes) > 0
     assert "name" in recipes[0]
@@ -33,20 +40,30 @@ def test_recipe_generation():
 
 def test_missing_fish_type():
     """
-    Tests that ambiguous fish input is handled with a clear error message.
+    Unit test for input validation behavior in RecipeAgent.
 
-    This unit test ensures the system correctly detects incomplete fish queries
-    and returns a clarification response instead of generating invalid recipes.
+    This test ensures that ambiguous fish-related input is handled safely
+    by requesting clarification instead of generating unreliable recipes.
+
+    Expected behavior:
+        - If "fish" is provided without a specific type (e.g., salmon, tuna),
+          the system should not proceed with recipe generation.
+        - The function should return an empty recipe list.
+        - A clear explanation message should be returned indicating the issue.
+
+    Scope:
+        - Tests input validation logic only
+        - Does NOT test recipe ranking or MCP API behavior
     """
 
     agent = RecipeAgent()
 
-    # Ambiguous input intentionally missing fish type
+    # Ambiguous input without fish type specification
     recipes, message = agent.generate(
         ["fish"],
         "BALANCED_MEALS"
     )
 
-    # Validate graceful failure behavior
+    # Validate safe failure behavior
     assert recipes == []
     assert "specify fish" in message.lower()

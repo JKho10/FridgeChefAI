@@ -9,27 +9,33 @@ load_dotenv()
 
 class NutritionAPI:
     """
-    fast usda nutrition mapper (optimized + deterministic)
+    NutritionAPI is a lightweight deterministic wrapper around the USDA FoodData Central API.
 
-    this class provides a lightweight interface to the usda fooddata central api.
-    it cleans ingredient text, searches the api, selects the best matching food,
-    and extracts normalized macronutrient values per 100g.
+    This class is responsible for:
+        - Cleaning and normalizing ingredient text
+        - Querying the USDA food database
+        - Selecting the most relevant food match
+        - Extracting macronutrients in a standardized format (per 100g)
+        - Providing cached lookups for performance optimization
 
-    the design prioritizes:
-    - deterministic results (no randomness)
-    - caching for performance
-    - robust text normalization
-    - safe fallback behavior when api fails
+    Design principles:
+        - Deterministic output (no randomness in selection)
+        - High cache efficiency (LRU caching)
+        - Robust fallback behavior when API fails
+        - Lightweight text normalization for better matching accuracy
     """
 
     BASE_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
 
     def __init__(self):
         """
-        initialize the nutrition api client.
+        Initialize NutritionAPI client.
 
-        loads the usda api key from environment variables.
-        raises an error if the key is missing because the api cannot function without it.
+        Loads USDA API key from environment variables.
+
+        Raises:
+            ValueError:
+                If USDA_API_KEY is not found in environment variables.
         """
         self.api_key = os.getenv("USDA_API_KEY")
         if not self.api_key:
@@ -38,16 +44,22 @@ class NutritionAPI:
     # Text normalization
     def clean(self, text: str) -> str:
         """
-        normalize ingredient text for consistent api querying.
+        Normalize ingredient text for consistent USDA search queries.
 
-        this removes quantities, units, and descriptive modifiers so that
-        search queries are more likely to match usda database entries.
+        Steps:
+            - Lowercase conversion
+            - Remove numeric values
+            - Remove common cooking descriptors and units
+            - Remove special characters
+            - Normalize whitespace
 
-        args:
-            text (str): raw ingredient text
+        This improves API matching accuracy by reducing noise in queries.
 
-        returns:
-            str: cleaned, normalized query string
+        Args:
+            text (str): Raw ingredient string
+
+        Returns:
+            str: Cleaned and normalized query string
         """
         text = text.lower()
         text = re.sub(r"\d+", "", text)
@@ -62,16 +74,24 @@ class NutritionAPI:
     # Nutrients extraction
     def extract(self, food: dict) -> dict:
         """
-        extract macronutrient values from a usda food entry.
+        Extract macronutrients from a USDA food entry.
 
-        converts raw api nutrient data into a simplified structure:
-        calories, protein, carbs, and fat (all per 100g basis).
+        Converts raw USDA nutrient format into a simplified structure:
 
-        args:
-            food (dict): raw food object from usda api
+            {
+                "calories": ...,
+                "protein": ...,
+                "carbs": ...,
+                "fat": ...
+            }
 
-        returns:
-            dict: normalized nutrient dictionary
+        All values are normalized per 100g.
+
+        Args:
+            food (dict): USDA food entry object
+
+        Returns:
+            dict: Standardized nutrient dictionary
         """
         out = {"calories": 0, "protein": 0, "carbs": 0, "fat": 0}
 
@@ -90,20 +110,27 @@ class NutritionAPI:
 
         return out
 
-    # Ranking logic
+    # Food matching
     def pick(self, foods, query: str):
         """
-        select the best matching food entry from usda search results.
+        Select the best matching USDA food entry for a query.
 
-        scoring is based on token overlap, specificity, and cooking relevance.
-        raw matches are preferred while processed or low-relevance items are penalized.
+        This function ranks candidates using a heuristic scoring system:
 
-        args:
-            foods (list): list of candidate food entries from api
-            query (str): cleaned ingredient query
+        Scoring signals:
+            - Token overlap with query (primary signal)
+            - Full subset matches
+            - Preference for raw foods
+            - Penalization of processed foods
+            - Slight penalty for overly long descriptions
 
-        returns:
-            dict or none: best matching food entry if confidence is sufficient
+        Args:
+            foods (list[dict]): Candidate USDA food entries
+            query (str): Cleaned ingredient query
+
+        Returns:
+            dict | None:
+                Best matching food entry, or None if no valid match is found
         """
         if not foods:
             return None
@@ -114,7 +141,7 @@ class NutritionAPI:
             desc = f.get("description", "").lower()
             desc_tokens = set(self.clean(desc).split())
 
-            # reject completely unrelated items
+            # reject unrelated items early
             if len(query_tokens & desc_tokens) == 0:
                 return -9999
 
@@ -142,20 +169,24 @@ class NutritionAPI:
 
         return best
 
-    # Cached api lookup
+    # Cached lookup
     @lru_cache(maxsize=512)
     def _cached_lookup(self, cleaned_query: str, api_key: str):
         """
-        cached wrapper for usda api requests.
+        Cached USDA API lookup for a normalized ingredient query.
 
-        avoids repeated network calls for identical queries.
+        This method:
+            1. Queries USDA API
+            2. Parses response safely
+            3. Selects best matching food
+            4. Extracts macronutrients
 
-        args:
-            cleaned_query (str): normalized ingredient query
-            api_key (str): usda api key (included for cache uniqueness)
+        Args:
+            cleaned_query (str): Preprocessed ingredient query
+            api_key (str): USDA API key (included for cache isolation)
 
-        returns:
-            dict or none: extracted nutrient data per 100g
+        Returns:
+            dict | None: Nutrients per 100g or None if unavailable
         """
         try:
             r = requests.get(
@@ -191,16 +222,19 @@ class NutritionAPI:
     # Public interface
     def get_nutrition_per_100g(self, ingredient: str):
         """
-        get nutrition values per 100g for a given ingredient.
+        Public API method to retrieve nutrition data per 100g.
 
-        this is the main public method used by downstream agents.
-        it handles cleaning, caching, api lookup, and fallback behavior.
+        This method:
+            - Cleans input ingredient
+            - Uses cached lookup layer
+            - Returns standardized macronutrient data
 
-        args:
-            ingredient (str): raw ingredient name from recipe
+        Args:
+            ingredient (str): Raw ingredient name
 
-        returns:
-            dict or none: nutrition values per 100g if available
+        Returns:
+            dict | None:
+                Nutrition data per 100g if found, otherwise None
         """
         if not ingredient:
             return None

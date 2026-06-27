@@ -1,22 +1,34 @@
 from agents.coordinator_agent import CoordinatorAgent
 
+
 def test_full_agent_pipeline():
     """
-    Tests the full coordinator agent pipeline end-to-end.
+    End-to-end integration test for CoordinatorAgent meal planning pipeline.
 
-    This integration test ensures that the coordinator agent can:
-    - Parse user input
-    - Generate recipes
-    - Compute nutrition
-    - Build a trace log
+    This test validates that the full system pipeline executes successfully
+    with all agents properly connected and returning a valid structured output.
 
-    It validates that the final output structure contains the expected keys
-    and that the pipeline completes without crashing.
+    Pipeline coverage:
+        - Input validation and required field handling
+        - SafetyAgent screening
+        - RecipeAgent generation and ranking
+        - NutritionAgent analysis and estimation
+        - ShoppingAgent list generation
+        - Execution trace logging across all stages
+
+    Test scope:
+        - Ensures system integration works end-to-end
+        - Verifies pipeline completes without runtime exceptions
+        - Confirms expected response schema exists
+
+    Test does NOT validate:
+        - Nutritional accuracy
+        - Recipe ranking quality
+        - External API correctness
     """
 
     agent = CoordinatorAgent()
 
-    # Run full meal planning pipeline with sample user data
     result = agent.run(
         "chicken,rice",
         "Weight Gain",
@@ -28,7 +40,17 @@ def test_full_agent_pipeline():
         "High Protein"
     )
 
-    # Validate required output structure exists
+    # ---------------- STRUCTURE VALIDATION ----------------
+    assert isinstance(result, dict), "Result should be a dictionary"
+
     assert "recipes" in result
     assert "nutrition" in result
     assert "trace" in result
+
+    # ---------------- BASIC INTEGRITY CHECKS ----------------
+    assert isinstance(result["recipes"], list)
+    assert isinstance(result["nutrition"], dict)
+    assert isinstance(result["trace"], list)
+
+    # Ensure pipeline actually executed steps
+    assert len(result["trace"]) > 0, "Trace should contain execution steps"

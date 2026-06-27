@@ -2,12 +2,20 @@ from agents.safety_agent import SafetyAgent
 
 def test_safe_input():
     """
-    Tests that normal food-related input is classified as safe.
+    Unit test for SafetyAgent safe-input classification.
 
-    This unit test ensures that benign culinary inputs containing common
-    ingredients are not incorrectly flagged by the safety system.
+    This test ensures that normal, non-harmful food-related input is
+    correctly classified as SAFE by the safety system.
+
+    It validates:
+        - Common culinary ingredients are not flagged as unsafe
+        - Safe input passes through the safety filter
+        - System does not over-trigger on neutral text
+
+    Scope:
+        - Tests safe classification behavior only
+        - Does NOT test edge-case slang or adversarial inputs
     """
-    
     agent = SafetyAgent()
 
     # Typical food-related input
@@ -20,12 +28,20 @@ def test_safe_input():
 
 def test_unsafe_input():
     """
-    Tests that harmful or self-directed harm language is flagged as unsafe.
+    Unit test for SafetyAgent high-risk input detection.
 
-    This unit test validates that the safety layer correctly identifies
-    high-risk phrases and blocks them from continuing through the pipeline.
+    This test ensures that harmful or self-directed harm language is
+    correctly identified and blocked by the safety system.
+
+    It validates:
+        - Detection of high-risk phrases related to self-harm
+        - Proper classification of unsafe inputs
+        - Prevention of unsafe input from entering downstream pipeline
+
+    Scope:
+        - Tests high-risk keyword detection logic
+        - Does NOT test full moderation system accuracy
     """
-
     agent = SafetyAgent()
 
     # Intentionally unsafe input for validation
@@ -33,5 +49,5 @@ def test_unsafe_input():
         "i want to starve myself"
     )
 
-    # System should block unsafe content
+    # Validate unsafe classification output
     assert "unsafe" in result.lower()
