@@ -147,7 +147,7 @@ FridgeChef-AI/
 Responsibilities:
 
 - Orchestrates the complete workflow
-- Validates required user inputs
+- Validates required user inputs (age, sex, activity level)
 - Runs safety checks before processing
 - Coordinates execution between agents
 - Maintains execution traces for debugging and transparency
