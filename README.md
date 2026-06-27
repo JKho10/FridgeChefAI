@@ -76,6 +76,8 @@ ShoppingAgent (ingredient consolidation)
 Final Output (recipes, nutrition, grocery list)
 ```
 
+![FridgeChef AI Architecture](docs/architecture.png)
+
 ---
 
 ## How it works
@@ -111,6 +113,9 @@ FridgeChef-AI/
 │ ├── nutrition_agent.py
 │ ├── shopping_agent.py
 │ └── safety_agent.py
+│
+├── docs/
+│   └── architecture.png
 │
 ├── skills/
 │ └── meal_skill.py
@@ -194,9 +199,9 @@ Responsibilities:
 
 # MCP Tool Layer
 
-The MealMCPServer provides a lightweight tool abstraction layer inspired by MCP concepts.
+The MealMCPServer provides a lightweight MCP-inspired tool abstraction layer.
 
-Instead of agents directly communicating with external APIs, API requests are routed through this centralized tool layer.
+It acts as an intermediary between agent logic and external services, exposing structured tools that agents can call without directly handling API communication.
 
 Available tools:
 
@@ -446,23 +451,21 @@ Future options:
 
 # Limitations
 
-- Nutrition estimates are simplified and not medical-grade
-- Recipe ranking is heuristic-based
-- Safety filtering is keyword-based
-- No persistent memory or personalization
-- No LLM-based reasoning component
-- External API coverage depends on MealDB and USDA datasets
+- Nutrition estimates are simplified and not intended for medical or clinical use.
+- Recipe ranking is heuristic-based and relies on deterministic scoring rules.
+- Safety filtering uses keyword-based detection and is not context-aware.
+- The system does not maintain persistent user memory or long-term personalization.
+- External API coverage depends on available data from MealDB and USDA FoodData Central.
 
 ---
 
 # Future Improvements
 
-- Add LLM-based recipe explanation or refinement
-- Improve nutrition accuracy with precise ingredient quantification
-- Add user profiles and personalization
-- Extend tool layer with additional integrations
-- Add feedback-based refinement loops
-- Deploy as production API (FastAPI + Docker)
+- Add LLM-based conversational recipe refinement
+- Add natural language meal request parsing
+- Add user preference memory
+- Improve ingredient quantity extraction
+- Extend MCP tool integrations
 
 ---
 

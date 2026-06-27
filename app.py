@@ -91,10 +91,10 @@ with st.sidebar:
 st.title("🍳 FridgeChef AI")
 st.caption("Multi-agent MCP-based meal planning system with recipe ranking, nutrition estimation, and grocery synthesis")
 
-ingredients = st.text_area("🥕 Ingredients", placeholder="e.g. chicken, rice, eggs, spinach")
-goal = st.selectbox("🎯 Goal", ["Lose Weight", "Maintenance", "Weight Gain"])
+ingredients = st.text_area("Ingredients", placeholder="e.g. chicken, rice, eggs, spinach")
+goal = st.selectbox("Goal", ["Lose Weight", "Maintenance", "Weight Gain"])
 
-st.subheader("🧍 Personal Profile")
+st.subheader("Personal Profile")
 
 weight_unit = st.radio("Weight Unit", ["kg", "lbs"], horizontal=True)
 height_unit = st.radio("Height Unit", ["cm", "inches"], horizontal=True)
